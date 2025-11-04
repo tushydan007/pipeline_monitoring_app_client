@@ -39,6 +39,7 @@ import {
   XCircle,
   Activity,
   User,
+  Loader2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -57,9 +58,17 @@ Icon.Default.mergeOptions({
 
 interface SatelliteImageLayerProps {
   image: SatelliteImage;
+  onLoadingStart?: () => void;
+  onLoadingEnd?: () => void;
+  onError?: () => void;
 }
 
-function SatelliteImageLayer({ image }: SatelliteImageLayerProps) {
+function SatelliteImageLayer({
+  image,
+  onLoadingStart,
+  onLoadingEnd,
+  onError,
+}: SatelliteImageLayerProps) {
   const map = useMap();
   const overlayRef = useRef<L.ImageOverlay | null>(null);
   const [bbox, setBbox] = useState<{
@@ -209,6 +218,8 @@ function SatelliteImageLayer({ image }: SatelliteImageLayerProps) {
           console.warn("Error removing overlay:", e);
         }
       }
+      // Clear loading state when bbox is cleared
+      onLoadingEnd?.();
       return;
     }
 
@@ -246,6 +257,9 @@ function SatelliteImageLayer({ image }: SatelliteImageLayerProps) {
     // Create the overlay directly - Leaflet will handle loading
     // Note: We don't need to preload since L.imageOverlay handles it
     try {
+      // Notify that loading has started
+      onLoadingStart?.();
+
       const overlay = L.imageOverlay(imageUrl, bounds, {
         opacity: 1.0, // Full opacity for better visibility
         interactive: false,
@@ -275,6 +289,8 @@ function SatelliteImageLayer({ image }: SatelliteImageLayerProps) {
           bounds: bounds,
           element: overlay.getElement(),
         });
+        // Notify that loading has ended successfully
+        onLoadingEnd?.();
         // Try to fit bounds to the image after it loads
         try {
           map.fitBounds(bounds, { padding: [20, 20] });
@@ -289,6 +305,9 @@ function SatelliteImageLayer({ image }: SatelliteImageLayerProps) {
           error: err,
           imageId: image.id,
         });
+        // Notify that loading ended with error
+        onError?.();
+        onLoadingEnd?.();
       });
 
       // Check if the overlay element exists in the DOM and verify image loaded
@@ -311,6 +330,7 @@ function SatelliteImageLayer({ image }: SatelliteImageLayerProps) {
           if (img.complete) {
             if (img.naturalWidth === 0 || img.naturalHeight === 0) {
               console.error("Image failed to load - natural dimensions are 0");
+              onError?.();
               // Try to reload the image
               const newUrl = `${imageUrl}?t=${Date.now()}`;
               overlay.setUrl(newUrl);
@@ -319,6 +339,8 @@ function SatelliteImageLayer({ image }: SatelliteImageLayerProps) {
                 naturalDimensions: `${img.naturalWidth}x${img.naturalHeight}`,
                 displayDimensions: `${img.width}x${img.height}`,
               });
+              // Image is already loaded
+              onLoadingEnd?.();
             }
           } else {
             console.log("Image still loading...");
@@ -326,9 +348,12 @@ function SatelliteImageLayer({ image }: SatelliteImageLayerProps) {
               console.log("Image loaded event fired:", {
                 naturalDimensions: `${img.naturalWidth}x${img.naturalHeight}`,
               });
+              onLoadingEnd?.();
             };
             img.onerror = () => {
               console.error("Image failed to load from:", img.src);
+              onError?.();
+              onLoadingEnd?.();
             };
           }
         } else {
@@ -344,6 +369,8 @@ function SatelliteImageLayer({ image }: SatelliteImageLayerProps) {
       }
     } catch (error) {
       console.error("Error creating image overlay:", error);
+      onError?.();
+      onLoadingEnd?.();
     }
 
     return () => {
@@ -401,6 +428,8 @@ export default function Dashboard() {
   const [selectedImage, setSelectedImage] = useState<string>("all");
   const [pipelineGeoJSON, setPipelineGeoJSON] =
     useState<GeoJSON.FeatureCollection | null>(null);
+  const [isImageLoading, setIsImageLoading] = useState(false);
+  const [imageLoadingError, setImageLoadingError] = useState(false);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -487,6 +516,10 @@ export default function Dashboard() {
 
   // Debug: Log displayed image info and extract bbox if missing
   useEffect(() => {
+    // Reset loading state when displayed image changes
+    setIsImageLoading(false);
+    setImageLoadingError(false);
+
     if (displayedImage) {
       console.log("Displayed Image:", {
         id: displayedImage.id,
@@ -679,7 +712,14 @@ export default function Dashboard() {
                 <label className="text-sm font-medium mb-2 block">
                   Satellite Image
                 </label>
-                <Select value={selectedImage} onValueChange={setSelectedImage}>
+                <Select
+                  value={selectedImage}
+                  onValueChange={(value) => {
+                    setSelectedImage(value);
+                    setIsImageLoading(false);
+                    setImageLoadingError(false);
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select image" />
                   </SelectTrigger>
@@ -743,6 +783,24 @@ export default function Dashboard() {
 
         {/* Map */}
         <div className="lg:col-span-3 rounded-lg overflow-hidden border border-border relative">
+          {/* Loading indicator */}
+          {isImageLoading && (
+            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10000 bg-card border border-border rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span className="text-sm font-medium text-foreground">
+                Loading satellite image...
+              </span>
+            </div>
+          )}
+          {/* Error indicator */}
+          {imageLoadingError && !isImageLoading && (
+            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10000 bg-destructive/10 border border-destructive/50 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              <span className="text-sm font-medium text-destructive">
+                Failed to load satellite image. Please try again.
+              </span>
+            </div>
+          )}
           <MapContainer
             center={[20, 0]}
             zoom={2}
@@ -813,7 +871,20 @@ export default function Dashboard() {
                     displayedImage.bbox_maxx !== null &&
                     displayedImage.bbox_maxy !== null)) && (
                   <LayersControl.Overlay checked name={displayedImage.name}>
-                    <SatelliteImageLayer image={displayedImage} />
+                    <SatelliteImageLayer
+                      image={displayedImage}
+                      onLoadingStart={() => {
+                        setIsImageLoading(true);
+                        setImageLoadingError(false);
+                      }}
+                      onLoadingEnd={() => {
+                        setIsImageLoading(false);
+                      }}
+                      onError={() => {
+                        setImageLoadingError(true);
+                        setIsImageLoading(false);
+                      }}
+                    />
                   </LayersControl.Overlay>
                 )}
 
