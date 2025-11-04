@@ -464,7 +464,12 @@ export default function Profile() {
                     )}
                   />
                 </div>
-                <Button type="submit" disabled={isLoading}>
+                <Button
+                  variant="outline"
+                  type="submit"
+                  disabled={isLoading}
+                  className="cursor-pointer hover:bg-black/80 hover:text-white transition-all duration-300 ease-in-out delay-100"
+                >
                   <Save className="h-4 w-4 mr-2" />
                   {isLoading ? "Saving..." : "Save Changes"}
                 </Button>
@@ -544,7 +549,12 @@ export default function Profile() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" disabled={isPasswordLoading}>
+                <Button
+                  type="submit"
+                  variant={"outline"}
+                  disabled={isPasswordLoading}
+                  className="cursor-pointer hover:bg-black/80 hover:text-white transition-all duration-300 ease-in-out delay-100"
+                >
                   <Key className="h-4 w-4 mr-2" />
                   {isPasswordLoading ? "Changing..." : "Change Password"}
                 </Button>

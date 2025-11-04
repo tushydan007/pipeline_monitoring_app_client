@@ -345,6 +345,17 @@
   color: hsl(var(--accent-foreground)) !important;
 }
 
+/* Theme toggle button - remove focus ring */
+button[data-radix-dropdown-menu-trigger][aria-label="Toggle theme"],
+button[data-radix-dropdown-menu-trigger][aria-label="Toggle theme"]:focus,
+button[data-radix-dropdown-menu-trigger][aria-label="Toggle theme"]:focus-visible,
+button[data-radix-dropdown-menu-trigger][aria-label="Toggle theme"]:active {
+  outline: none !important;
+  box-shadow: none !important;
+  --tw-ring-width: 0 !important;
+  --tw-ring-offset-width: 0 !important;
+}
+
 /* Satellite image overlay styles */
 .satellite-image-overlay {
   border: 2px solid rgba(59, 130, 246, 0.5) !important;

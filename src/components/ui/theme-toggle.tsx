@@ -17,7 +17,7 @@ export function ThemeToggle() {
         <Button
           variant="outline"
           size="icon"
-          className="relative cursor-pointer z-10 bg-card hover:bg-accent border-border text-foreground shadow-sm"
+          className="relative cursor-pointer z-10 bg-card hover:bg-accent border-border text-foreground shadow-sm focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
           type="button"
           aria-label="Toggle theme"
         >

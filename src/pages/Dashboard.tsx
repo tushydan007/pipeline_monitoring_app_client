@@ -40,6 +40,8 @@ import {
   Activity,
   User,
   Loader2,
+  Gauge,
+  Satellite,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -609,13 +611,29 @@ export default function Dashboard() {
       {/* Header */}
       <header className="bg-card border-b border-border px-6 py-4 shadow-sm">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Pipeline Monitoring Dashboard
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Welcome, {user?.username}
-            </p>
+          <div className="flex items-center gap-4">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gray-900/20 dark:bg-gray-800/30 rounded-lg blur-sm"></div>
+                <div className="relative bg-linear-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-lg p-2.5 shadow-lg border border-gray-700/50 dark:border-gray-600/50">
+                  <div className="flex items-center justify-center">
+                    <Satellite className="h-6 w-6 text-white" />
+                    <div className="absolute -bottom-1 -right-1 bg-white dark:bg-gray-100 rounded-full p-0.5 shadow-md border border-gray-300 dark:border-gray-400">
+                      <Gauge className="h-3 w-3 text-gray-900 dark:text-gray-800" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <h1 className="text-2xl font-bold text-foreground leading-tight">
+                  Pipeline Monitor
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  Welcome, {user?.username}
+                </p>
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <ThemeToggle />
