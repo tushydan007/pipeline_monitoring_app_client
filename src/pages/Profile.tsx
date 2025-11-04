@@ -117,16 +117,25 @@ export default function Profile() {
   const onProfileSubmit = async (data: ProfileFormValues) => {
     setIsLoading(true);
     try {
+      console.log("Updating profile with data:", data);
       const response = await userApi.updateProfile(data);
+      console.log("Profile update response:", response);
+      console.log("Response data:", response.data);
+
       // Update Redux store with new user data
-      await dispatch(fetchCurrentUser()).unwrap();
-      // Reset form with updated data
-      profileForm.reset({
+      const updatedUser = await dispatch(fetchCurrentUser()).unwrap();
+      console.log("Updated user from Redux:", updatedUser);
+
+      // Reset form with updated data from response
+      const updatedData = {
         username: response.data.username || data.username,
         email: response.data.email || data.email,
         first_name: response.data.first_name || data.first_name,
         last_name: response.data.last_name || data.last_name,
-      });
+      };
+      console.log("Resetting form with data:", updatedData);
+      profileForm.reset(updatedData);
+
       toast.success("Profile updated successfully!");
     } catch (error: unknown) {
       console.error("Profile update error:", error);

@@ -383,7 +383,7 @@ function SatelliteImageLayer({
         }
       }
     };
-  }, [bbox, image, map]);
+  }, [bbox, image, map, onLoadingStart, onLoadingEnd, onError]);
 
   return null;
 }
@@ -433,11 +433,20 @@ export default function Dashboard() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const response = await notificationApi.getAll({ is_read: false });
-      const newNotifications = response.data.results || response.data;
+      // Load unread notifications for display
+      const notificationsResponse = await notificationApi.getAll({
+        is_read: false,
+      });
+      const newNotifications =
+        notificationsResponse.data.results || notificationsResponse.data;
+
       setNotifications((prevNotifications) => {
         if (newNotifications.length > prevNotifications.length) {
-          toast.info(`You have ${newNotifications.length} new notifications`);
+          toast.info(
+            `You have ${newNotifications.length} new notification${
+              newNotifications.length !== 1 ? "s" : ""
+            }`
+          );
         }
         return newNotifications;
       });
@@ -495,8 +504,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadNotifications, 30000); // Check every 30 seconds
-    return () => clearInterval(interval);
+    // Load notifications immediately and then every 10 seconds for real-time updates
+    loadNotifications();
+    const notificationsInterval = setInterval(loadNotifications, 10000);
+    return () => clearInterval(notificationsInterval);
   }, [loadData, loadNotifications]);
 
   const handleLogout = async () => {
@@ -573,6 +584,21 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedImage]);
 
+  // Memoize callbacks for SatelliteImageLayer to prevent unnecessary re-renders
+  const handleImageLoadingStart = useCallback(() => {
+    setIsImageLoading(true);
+    setImageLoadingError(false);
+  }, []);
+
+  const handleImageLoadingEnd = useCallback(() => {
+    setIsImageLoading(false);
+  }, []);
+
+  const handleImageError = useCallback(() => {
+    setImageLoadingError(true);
+    setIsImageLoading(false);
+  }, []);
+
   const criticalAnomalies = anomalies.filter(
     (a) => a.severity === "critical"
   ).length;
@@ -594,7 +620,12 @@ export default function Dashboard() {
           <div className="flex items-center gap-4">
             <ThemeToggle />
             <div className="relative">
-              <Button variant="outline" size="icon" className="relative">
+              <Button
+                variant="outline"
+                size="icon"
+                className="relative cursor-pointer"
+                onClick={() => navigate("/notifications")}
+              >
                 <Bell className="h-5 w-5" />
                 {notifications.length > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
@@ -607,10 +638,15 @@ export default function Dashboard() {
               variant="outline"
               onClick={() => navigate("/profile")}
               size="icon"
+              className="cursor-pointer"
             >
               <User className="h-5 w-5" />
             </Button>
-            <Button variant="outline" onClick={handleLogout}>
+            <Button
+              variant="outline"
+              onClick={handleLogout}
+              className="cursor-pointer"
+            >
               Logout
             </Button>
           </div>
@@ -873,17 +909,9 @@ export default function Dashboard() {
                   <LayersControl.Overlay checked name={displayedImage.name}>
                     <SatelliteImageLayer
                       image={displayedImage}
-                      onLoadingStart={() => {
-                        setIsImageLoading(true);
-                        setImageLoadingError(false);
-                      }}
-                      onLoadingEnd={() => {
-                        setIsImageLoading(false);
-                      }}
-                      onError={() => {
-                        setImageLoadingError(true);
-                        setIsImageLoading(false);
-                      }}
+                      onLoadingStart={handleImageLoadingStart}
+                      onLoadingEnd={handleImageLoadingEnd}
+                      onError={handleImageError}
                     />
                   </LayersControl.Overlay>
                 )}

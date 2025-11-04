@@ -200,6 +200,7 @@ export const notificationApi = {
   markRead: (id: string) => api.post(`/notifications/${id}/mark_read/`),
   markAllRead: () => api.post("/notifications/mark_all_read/"),
   getUnreadCount: () => api.get("/notifications/unread_count/"),
+  delete: (id: string) => api.delete(`/notifications/${id}/`),
 };
 
 // User endpoints (using Djoser)

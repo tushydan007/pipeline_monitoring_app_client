@@ -268,6 +268,83 @@
   background-color: hsl(var(--accent));
 }
 
+/* Leaflet Zoom Control styles */
+.leaflet-control-zoom {
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
+  font-size: 18px;
+  font-weight: bold;
+  text-decoration: none;
+  display: block;
+  text-align: center;
+  transition: background-color 0.2s;
+}
+
+.leaflet-control-zoom-in:hover,
+.leaflet-control-zoom-out:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.leaflet-control-zoom-in:active,
+.leaflet-control-zoom-out:active {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+/* Ensure zoom control text/icons are visible */
+.leaflet-control-zoom-in a,
+.leaflet-control-zoom-out a {
+  color: hsl(var(--foreground)) !important;
+  text-decoration: none;
+}
+
+.leaflet-control-zoom-in a:hover,
+.leaflet-control-zoom-out a:hover {
+  color: hsl(var(--accent-foreground)) !important;
+}
+
+/* Dark mode adjustments for zoom control */
+.dark .leaflet-control-zoom {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+.dark .leaflet-control-zoom-in,
+.dark .leaflet-control-zoom-out {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .leaflet-control-zoom-in a,
+.dark .leaflet-control-zoom-out a {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .leaflet-control-zoom-in:hover,
+.dark .leaflet-control-zoom-out:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground)) !important;
+}
+
+.dark .leaflet-control-zoom-in a:hover,
+.dark .leaflet-control-zoom-out a:hover {
+  color: hsl(var(--accent-foreground)) !important;
+}
+
 /* Satellite image overlay styles */
 .satellite-image-overlay {
   border: 2px solid rgba(59, 130, 246, 0.5) !important;

@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
+import Notifications from "./pages/Notifications";
 import "react-toastify/dist/ReactToastify.css";
 
 function PrivateRoute({ children }: { children: React.ReactElement }) {
@@ -52,6 +53,14 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <Profile />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <PrivateRoute>
+            <Notifications />
           </PrivateRoute>
         }
       />
