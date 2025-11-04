@@ -1,0 +1,282 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 47.4% 11.2%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 47.4% 11.2%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 47.4% 11.2%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  /* Toast notifications */
+  .Toastify__toast {
+    background-color: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+  }
+
+  .Toastify__toast--success {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+
+  .Toastify__toast--error {
+    background-color: hsl(var(--destructive));
+    color: hsl(var(--destructive-foreground));
+  }
+
+  .Toastify__toast--info {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+  }
+
+  /* Ensure text is readable in all contexts */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: hsl(var(--foreground));
+  }
+
+  p,
+  span,
+  div {
+    color: hsl(var(--foreground));
+  }
+
+  /* Card styles */
+  .card {
+    background-color: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    border-color: hsl(var(--border));
+  }
+
+  /* Input styles */
+  input,
+  textarea,
+  select {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--input));
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Select dropdown styles */
+  [data-radix-select-trigger] {
+    background-color: hsl(var(--card)) !important;
+    color: hsl(var(--card-foreground)) !important;
+    border-color: hsl(var(--input)) !important;
+  }
+
+  [data-radix-select-content] {
+    background-color: hsl(var(--popover)) !important;
+    color: hsl(var(--popover-foreground)) !important;
+    border-color: hsl(var(--border)) !important;
+  }
+
+  [data-radix-select-viewport] {
+    background-color: hsl(var(--popover)) !important;
+  }
+
+  [data-radix-select-item] {
+    color: hsl(var(--popover-foreground)) !important;
+  }
+
+  [data-radix-select-item]:hover,
+  [data-radix-select-item][data-highlighted] {
+    background-color: hsl(var(--accent)) !important;
+    color: hsl(var(--accent-foreground)) !important;
+  }
+
+  /* Theme toggle button styles */
+  button[data-radix-dropdown-menu-trigger] {
+    background-color: hsl(var(--card)) !important;
+    border-color: hsl(var(--border)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  button[data-radix-dropdown-menu-trigger]:hover {
+    background-color: hsl(var(--accent)) !important;
+    color: hsl(var(--accent-foreground)) !important;
+  }
+
+  /* Dropdown menu content styles */
+  [data-radix-dropdown-menu-content] {
+    background-color: hsl(var(--popover)) !important;
+    color: hsl(var(--popover-foreground)) !important;
+    border-color: hsl(var(--border)) !important;
+    opacity: 1 !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+  }
+
+  [data-radix-dropdown-menu-item] {
+    color: hsl(var(--popover-foreground)) !important;
+    background-color: transparent !important;
+  }
+
+  [data-radix-dropdown-menu-item]:hover,
+  [data-radix-dropdown-menu-item][data-highlighted] {
+    background-color: hsl(var(--accent)) !important;
+    color: hsl(var(--accent-foreground)) !important;
+  }
+
+  /* Dialog overlay - only show when open */
+  [data-radix-dialog-overlay]:not([data-state="open"]) {
+    display: none !important;
+  }
+
+  [data-radix-dialog-content]:not([data-state="open"]) {
+    display: none !important;
+  }
+}
+
+/* Leaflet map container styles */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  z-index: 0;
+}
+
+/* Leaflet Layers Control styles */
+.leaflet-control-layers {
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.leaflet-control-layers-toggle {
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  width: 36px;
+  height: 36px;
+}
+
+.leaflet-control-layers-toggle:hover {
+  background-color: hsl(var(--accent));
+}
+
+.leaflet-control-layers-expanded {
+  padding: 8px;
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--card));
+}
+
+.leaflet-control-layers-base label,
+.leaflet-control-layers-overlays label {
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  cursor: pointer;
+  display: block;
+  padding: 4px 8px;
+  margin: 2px 0;
+}
+
+.leaflet-control-layers-base label:hover,
+.leaflet-control-layers-overlays label:hover {
+  background-color: hsl(var(--accent));
+  border-radius: 2px;
+}
+
+.leaflet-control-layers-separator {
+  border-top: 1px solid hsl(var(--border));
+  margin: 8px 0;
+}
+
+/* Ensure Layers Control is always visible */
+.leaflet-control-layers-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leaflet-control-layers input[type="radio"],
+.leaflet-control-layers input[type="checkbox"] {
+  margin-right: 6px;
+  cursor: pointer;
+}
+
+/* Dark mode adjustments for Leaflet controls */
+.dark .leaflet-control-layers {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+.dark .leaflet-control-layers-toggle {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+.dark .leaflet-control-layers-toggle:hover {
+  background-color: hsl(var(--accent));
+}
+
+/* Satellite image overlay styles */
+.satellite-image-overlay {
+  border: 2px solid rgba(59, 130, 246, 0.5) !important;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3) !important;
+  pointer-events: none !important;
+}
+
+.satellite-image-overlay img {
+  display: block !important;
+  max-width: none !important;
+  max-height: none !important;
+}
