@@ -42,6 +42,10 @@ import {
   Loader2,
   Gauge,
   Satellite,
+  PanelLeftClose,
+  PanelLeftOpen,
+  BarChart3,
+  Minimize2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -417,6 +421,33 @@ function MapBoundsUpdater({ geojson }: MapBoundsUpdaterProps) {
   return null;
 }
 
+interface MapResizeHandlerProps {
+  isSidebarOpen: boolean;
+  isStatsVisible: boolean;
+}
+
+function MapResizeHandler({
+  isSidebarOpen,
+  isStatsVisible,
+}: MapResizeHandlerProps) {
+  const map = useMap();
+
+  useEffect(() => {
+    // Use a small timeout to ensure DOM has updated after sidebar state change
+    const timeoutId = setTimeout(() => {
+      try {
+        map.invalidateSize();
+      } catch (error) {
+        console.error("Error invalidating map size:", error);
+      }
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [isSidebarOpen, isStatsVisible, map]);
+
+  return null;
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -432,6 +463,8 @@ export default function Dashboard() {
     useState<GeoJSON.FeatureCollection | null>(null);
   const [isImageLoading, setIsImageLoading] = useState(false);
   const [imageLoadingError, setImageLoadingError] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isStatsVisible, setIsStatsVisible] = useState(true);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -636,6 +669,32 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="icon"
+              className="cursor-pointer"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              title={isSidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            >
+              {isSidebarOpen ? (
+                <PanelLeftClose className="h-5 w-5" />
+              ) : (
+                <PanelLeftOpen className="h-5 w-5" />
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="cursor-pointer"
+              onClick={() => setIsStatsVisible(!isStatsVisible)}
+              title={isStatsVisible ? "Hide stats" : "Show stats"}
+            >
+              {isStatsVisible ? (
+                <Minimize2 className="h-5 w-5" />
+              ) : (
+                <BarChart3 className="h-5 w-5" />
+              )}
+            </Button>
             <ThemeToggle />
             <div className="relative">
               <Button
@@ -672,171 +731,179 @@ export default function Dashboard() {
       </header>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Pipelines
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">
-              {pipelines.length}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Satellite Images
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">
-              {satelliteImages.length}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-destructive/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-destructive flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              Critical Anomalies
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">
-              {criticalAnomalies}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-orange-500/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-orange-600 dark:text-orange-400 flex items-center gap-2">
-              <Activity className="h-4 w-4" />
-              High Priority
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-              {highAnomalies}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Controls and Map */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 overflow-hidden">
-        {/* Sidebar */}
-        <div className="lg:col-span-1 space-y-4 overflow-y-auto">
+      {isStatsVisible && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Filters</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Pipelines
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Pipeline
-                </label>
-                <Select
-                  value={selectedPipeline}
-                  onValueChange={(value) => {
-                    setSelectedPipeline(value);
-                    if (value !== "all") {
-                      loadPipelineGeoJSON(value);
-                    } else {
-                      setPipelineGeoJSON(null);
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select pipeline" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Pipelines</SelectItem>
-                    {pipelines.map((pipeline) => (
-                      <SelectItem key={pipeline.id} value={pipeline.id}>
-                        {pipeline.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Satellite Image
-                </label>
-                <Select
-                  value={selectedImage}
-                  onValueChange={(value) => {
-                    setSelectedImage(value);
-                    setIsImageLoading(false);
-                    setImageLoadingError(false);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select image" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">No Image</SelectItem>
-                    {filteredImages.map((image) => (
-                      <SelectItem key={image.id} value={image.id}>
-                        {image.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <CardContent>
+              <div className="text-2xl font-bold text-foreground">
+                {pipelines.length}
               </div>
             </CardContent>
           </Card>
-
-          {/* Anomalies List */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Recent Anomalies</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Satellite Images
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {anomalies.slice(0, 10).map((anomaly) => (
-                  <div
-                    key={anomaly.id}
-                    className={`p-3 rounded-lg border ${
-                      anomaly.severity === "critical"
-                        ? "border-red-200 bg-red-50 dark:bg-red-900/20"
-                        : anomaly.severity === "high"
-                        ? "border-orange-200 bg-orange-50 dark:bg-orange-900/20"
-                        : "border-gray-200 bg-gray-50 dark:bg-gray-800"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">
-                          {anomaly.anomaly_type_display}
-                        </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                          {anomaly.severity_display}
-                        </p>
-                      </div>
-                      {anomaly.is_resolved ? (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {anomalies.length === 0 && (
-                  <p className="text-sm text-gray-500 text-center py-4">
-                    No anomalies detected
-                  </p>
-                )}
+              <div className="text-2xl font-bold text-foreground">
+                {satelliteImages.length}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-destructive/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-destructive flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                Critical Anomalies
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-destructive">
+                {criticalAnomalies}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-orange-500/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-orange-600 dark:text-orange-400 flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                High Priority
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                {highAnomalies}
               </div>
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Controls and Map */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 overflow-hidden">
+        {/* Sidebar */}
+        {isSidebarOpen && (
+          <div className="lg:col-span-1 space-y-4 overflow-y-auto">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Filters</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Pipeline
+                  </label>
+                  <Select
+                    value={selectedPipeline}
+                    onValueChange={(value) => {
+                      setSelectedPipeline(value);
+                      if (value !== "all") {
+                        loadPipelineGeoJSON(value);
+                      } else {
+                        setPipelineGeoJSON(null);
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select pipeline" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Select Pipeline</SelectItem>
+                      {pipelines.map((pipeline) => (
+                        <SelectItem key={pipeline.id} value={pipeline.id}>
+                          {pipeline.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Satellite Image
+                  </label>
+                  <Select
+                    value={selectedImage}
+                    onValueChange={(value) => {
+                      setSelectedImage(value);
+                      setIsImageLoading(false);
+                      setImageLoadingError(false);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select image" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">No Image</SelectItem>
+                      {filteredImages.map((image) => (
+                        <SelectItem key={image.id} value={image.id}>
+                          {image.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Anomalies List */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Recent Anomalies</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {anomalies.slice(0, 10).map((anomaly) => (
+                    <div
+                      key={anomaly.id}
+                      className={`p-3 rounded-lg border ${
+                        anomaly.severity === "critical"
+                          ? "border-red-200 bg-red-50 dark:bg-red-900/20"
+                          : anomaly.severity === "high"
+                          ? "border-orange-200 bg-orange-50 dark:bg-orange-900/20"
+                          : "border-gray-200 bg-gray-50 dark:bg-gray-800"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">
+                            {anomaly.anomaly_type_display}
+                          </p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                            {anomaly.severity_display}
+                          </p>
+                        </div>
+                        {anomaly.is_resolved ? (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {anomalies.length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-4">
+                      No anomalies detected
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Map */}
-        <div className="lg:col-span-3 rounded-lg overflow-hidden border border-border relative">
+        <div
+          className={`rounded-lg overflow-hidden border border-border relative transition-all duration-300 ${
+            isSidebarOpen ? "lg:col-span-3" : "lg:col-span-4"
+          }`}
+        >
           {/* Loading indicator */}
           {isImageLoading && (
             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10000 bg-card border border-border rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
@@ -862,6 +929,10 @@ export default function Dashboard() {
             zoomControl={true}
           >
             <MapBoundsUpdater geojson={pipelineGeoJSON} />
+            <MapResizeHandler
+              isSidebarOpen={isSidebarOpen}
+              isStatsVisible={isStatsVisible}
+            />
             <LayersControl position="topright">
               {/* Base Layers */}
               <LayersControl.BaseLayer checked name="OpenStreetMap">
