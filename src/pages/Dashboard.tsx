@@ -10,6 +10,7 @@ import {
 } from "react-leaflet";
 import { Icon, type LatLngTuple } from "leaflet";
 import L from "leaflet";
+import type { AxiosError } from "axios";
 import {
   pipelineApi,
   satelliteImageApi,
@@ -77,6 +78,7 @@ function SatelliteImageLayer({
 }: SatelliteImageLayerProps) {
   const map = useMap();
   const overlayRef = useRef<L.ImageOverlay | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
   const [bbox, setBbox] = useState<{
     minx: number;
     miny: number;
@@ -234,6 +236,16 @@ function SatelliteImageLayer({
       [bbox.maxy, bbox.maxx],
     ];
 
+    // Clean up any existing overlay first
+    if (overlayRef.current) {
+      try {
+        map.removeLayer(overlayRef.current);
+        overlayRef.current = null;
+      } catch (e) {
+        console.warn("Error removing existing overlay:", e);
+      }
+    }
+
     // Use the display_image endpoint that converts TIFF to PNG for browser display
     // Construct the correct backend URL - Django is typically on port 8000
     const protocol = window.location.protocol;
@@ -250,134 +262,107 @@ function SatelliteImageLayer({
       currentHost: window.location.host,
     });
 
-    // Clean up any existing overlay first
-    if (overlayRef.current) {
+    // Fetch the image with authentication using axios
+    // This is necessary because Leaflet's imageOverlay doesn't send auth headers
+    const loadImage = async () => {
       try {
-        map.removeLayer(overlayRef.current);
-        overlayRef.current = null;
-      } catch (e) {
-        console.warn("Error removing existing overlay:", e);
-      }
-    }
+        // Notify that loading has started
+        onLoadingStart?.();
 
-    // Create the overlay directly - Leaflet will handle loading
-    // Note: We don't need to preload since L.imageOverlay handles it
-    try {
-      // Notify that loading has started
-      onLoadingStart?.();
-
-      const overlay = L.imageOverlay(imageUrl, bounds, {
-        opacity: 1.0, // Full opacity for better visibility
-        interactive: false,
-        className: "satellite-image-overlay",
-        zIndex: 1000, // Ensure it's above base layers
-        attribution: `Satellite Image: ${image.name}`,
-      }).addTo(map);
-
-      // Force the overlay to bring itself to front
-      overlay.bringToFront();
-
-      overlayRef.current = overlay;
-
-      console.log("Added satellite image overlay:", {
-        url: imageUrl,
-        bounds: bounds,
-        imageName: image.name,
-        bounds_string: `[[${bbox.miny}, ${bbox.minx}], [${bbox.maxy}, ${bbox.maxx}]]`,
-        overlayAdded: true,
-        mapHasLayer: map.hasLayer(overlay),
-      });
-
-      // Listen for when the image loads
-      overlay.on("load", () => {
-        console.log("Satellite image overlay loaded successfully", {
-          url: imageUrl,
-          bounds: bounds,
-          element: overlay.getElement(),
-        });
-        // Notify that loading has ended successfully
-        onLoadingEnd?.();
-        // Try to fit bounds to the image after it loads
-        try {
-          map.fitBounds(bounds, { padding: [20, 20] });
-        } catch (e) {
-          console.warn("Could not fit bounds:", e);
-        }
-      });
-
-      overlay.on("error", (err) => {
-        console.error("Error loading satellite image overlay:", {
-          url: imageUrl,
-          error: err,
+        console.log("Fetching satellite image with authentication:", {
+          imageUrl,
           imageId: image.id,
         });
-        // Notify that loading ended with error
+
+        // Fetch the image using axios with full URL and authentication
+        // Create a new axios instance for this request to use the full URL
+        const axios = (await import("axios")).default;
+        const { getAccessToken } = await import("@/lib/jwt");
+        const token = getAccessToken();
+
+        const imageResponse = await axios.get(imageUrl, {
+          responseType: "blob", // Important: request as blob
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        // Create a blob URL from the response
+        const blob = imageResponse.data;
+        const blobUrl = URL.createObjectURL(blob);
+        blobUrlRef.current = blobUrl; // Store in ref for cleanup
+
+        console.log("Image fetched successfully, creating overlay:", {
+          blobSize: blob.size,
+          blobType: blob.type,
+          blobUrl,
+        });
+
+        // Create the overlay with the blob URL
+        const overlay = L.imageOverlay(blobUrl, bounds, {
+          opacity: 1.0,
+          interactive: false,
+          className: "satellite-image-overlay",
+          zIndex: 1000,
+          attribution: `Satellite Image: ${image.name}`,
+        }).addTo(map);
+
+        // Force the overlay to bring itself to front
+        overlay.bringToFront();
+
+        overlayRef.current = overlay;
+
+        // Listen for when the image loads
+        overlay.on("load", () => {
+          console.log("Satellite image overlay loaded successfully", {
+            bounds: bounds,
+            imageName: image.name,
+          });
+          onLoadingEnd?.();
+          // Try to fit bounds to the image after it loads
+          try {
+            map.fitBounds(bounds, { padding: [20, 20] });
+          } catch (e) {
+            console.warn("Could not fit bounds:", e);
+          }
+        });
+
+        overlay.on("error", (err) => {
+          console.error("Error loading satellite image overlay:", {
+            error: err,
+            imageId: image.id,
+          });
+          // Clean up blob URL on error
+          if (blobUrlRef.current) {
+            URL.revokeObjectURL(blobUrlRef.current);
+            blobUrlRef.current = null;
+          }
+          onError?.();
+          onLoadingEnd?.();
+        });
+      } catch (error) {
+        const axiosError = error as AxiosError;
+        console.error("Error fetching satellite image:", axiosError);
+        // Check if it's an authentication error
+        if (
+          axiosError.response?.status === 401 ||
+          axiosError.response?.status === 403
+        ) {
+          console.error("Authentication error - token may be expired");
+        } else if (axiosError.response?.status === 404) {
+          console.error("Image file not found on server");
+        } else {
+          console.error("Error response:", axiosError.response?.data);
+        }
+        // Clean up blob URL on error
+        if (blobUrlRef.current) {
+          URL.revokeObjectURL(blobUrlRef.current);
+          blobUrlRef.current = null;
+        }
         onError?.();
         onLoadingEnd?.();
-      });
-
-      // Check if the overlay element exists in the DOM and verify image loaded
-      setTimeout(() => {
-        const element = overlay.getElement();
-        if (element) {
-          const img = element as HTMLImageElement;
-          console.log("Overlay element found in DOM:", {
-            src: img.src,
-            naturalWidth: img.naturalWidth,
-            naturalHeight: img.naturalHeight,
-            width: img.width,
-            height: img.height,
-            complete: img.complete,
-            style: img.style.cssText,
-            bounds: bounds,
-          });
-
-          // If image is complete, verify it loaded correctly
-          if (img.complete) {
-            if (img.naturalWidth === 0 || img.naturalHeight === 0) {
-              console.error("Image failed to load - natural dimensions are 0");
-              onError?.();
-              // Try to reload the image
-              const newUrl = `${imageUrl}?t=${Date.now()}`;
-              overlay.setUrl(newUrl);
-            } else {
-              console.log("Image loaded successfully:", {
-                naturalDimensions: `${img.naturalWidth}x${img.naturalHeight}`,
-                displayDimensions: `${img.width}x${img.height}`,
-              });
-              // Image is already loaded
-              onLoadingEnd?.();
-            }
-          } else {
-            console.log("Image still loading...");
-            img.onload = () => {
-              console.log("Image loaded event fired:", {
-                naturalDimensions: `${img.naturalWidth}x${img.naturalHeight}`,
-              });
-              onLoadingEnd?.();
-            };
-            img.onerror = () => {
-              console.error("Image failed to load from:", img.src);
-              onError?.();
-              onLoadingEnd?.();
-            };
-          }
-        } else {
-          console.warn("Overlay element not found in DOM");
-        }
-      }, 500); // Increased timeout to allow image to load
-
-      // Also try to fit bounds immediately
-      try {
-        map.fitBounds(bounds, { padding: [20, 20] });
-      } catch (e) {
-        console.warn("Could not fit bounds:", e);
       }
-    } catch (error) {
-      console.error("Error creating image overlay:", error);
-      onError?.();
-      onLoadingEnd?.();
-    }
+    };
+
+    loadImage();
 
     return () => {
       if (overlayRef.current) {
@@ -387,6 +372,11 @@ function SatelliteImageLayer({
         } catch (e) {
           console.warn("Error removing overlay:", e);
         }
+      }
+      // Clean up blob URL
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
     };
   }, [bbox, image, map, onLoadingStart, onLoadingEnd, onError]);
