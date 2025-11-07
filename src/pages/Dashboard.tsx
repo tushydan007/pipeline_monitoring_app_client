@@ -550,6 +550,16 @@ export default function Dashboard() {
       ? null
       : satelliteImages.find((img) => img.id === selectedImage);
 
+  // Format creation date for display
+  const formatImageDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
   // Debug: Log displayed image info and extract bbox if missing
   useEffect(() => {
     // Reset loading state when displayed image changes
@@ -830,10 +840,17 @@ export default function Dashboard() {
                       <SelectValue placeholder="Select image" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">No Image</SelectItem>
+                      <SelectItem value="all">Select Image</SelectItem>
                       {filteredImages.map((image) => (
-                        <SelectItem key={image.id} value={image.id}>
-                          {image.name}
+                        <SelectItem
+                          key={image.id}
+                          value={image.id}
+                          className="[&>span:last-child]:flex [&>span:last-child]:items-center [&>span:last-child]:justify-between [&>span:last-child]:w-full"
+                        >
+                          <span className="flex-1 truncate">{image.name}</span>
+                          <span className="text-xs text-muted-foreground ml-4 shrink-0">
+                            {formatImageDate(image.created_at)}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
