@@ -16,12 +16,14 @@ import {
   satelliteImageApi,
   anomalyApi,
   notificationApi,
+  analysisApi,
 } from "@/lib/api";
 import {
   type Pipeline,
   type SatelliteImage,
   type Anomaly,
   type Notification,
+  type Analysis,
 } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,9 @@ import {
   PanelLeftOpen,
   BarChart3,
   Minimize2,
+  FileText,
+  TrendingUp,
+  Clock,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -446,6 +451,7 @@ export default function Dashboard() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [satelliteImages, setSatelliteImages] = useState<SatelliteImage[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<string>("all");
   const [selectedImage, setSelectedImage] = useState<string>("all");
@@ -504,17 +510,28 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [pipelinesRes, imagesRes, anomaliesRes, notificationsRes] =
-        await Promise.all([
-          pipelineApi.getAll(),
-          satelliteImageApi.getAll(),
-          anomalyApi.getAll({ is_resolved: false }),
-          notificationApi.getAll({ is_read: false }),
-        ]);
+      const [
+        pipelinesRes,
+        imagesRes,
+        anomaliesRes,
+        analysesRes,
+        notificationsRes,
+      ] = await Promise.all([
+        pipelineApi.getAll(),
+        satelliteImageApi.getAll(),
+        anomalyApi.getAll({ is_resolved: false }),
+        analysisApi.getAll(),
+        notificationApi.getAll({ is_read: false }),
+      ]);
 
       setPipelines(pipelinesRes.data.results || pipelinesRes.data);
       setSatelliteImages(imagesRes.data.results || imagesRes.data);
       setAnomalies(anomaliesRes.data.results || anomaliesRes.data);
+      // Filter to only completed analyses
+      const completedAnalyses = (
+        analysesRes.data.results || analysesRes.data
+      ).filter((a: Analysis) => a.status === "completed");
+      setAnalyses(completedAnalyses);
       setNotifications(notificationsRes.data.results || notificationsRes.data);
 
       // Load GeoJSON for selected pipeline
@@ -558,6 +575,32 @@ export default function Dashboard() {
       month: "short",
       day: "numeric",
     });
+  };
+
+  // Group analyses by satellite image
+  const analysesByImage = analyses.reduce((acc, analysis) => {
+    const imageId = analysis.satellite_image;
+    if (!acc[imageId]) {
+      acc[imageId] = [];
+    }
+    acc[imageId].push(analysis);
+    return acc;
+  }, {} as Record<string, Analysis[]>);
+
+  // Get severity badge color
+  const getSeverityBadgeColor = (severity: string | null) => {
+    switch (severity) {
+      case "critical":
+        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+      case "high":
+        return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300";
+      case "medium":
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300";
+      case "low":
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+      default:
+        return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300";
+    }
   };
 
   // Debug: Log displayed image info and extract bbox if missing
@@ -855,6 +898,141 @@ export default function Dashboard() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Analysis Results */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Analysis Results
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                  {Object.entries(analysesByImage).map(
+                    ([imageId, imageAnalyses]) => {
+                      const image = satelliteImages.find(
+                        (img) => img.id === imageId
+                      );
+                      if (!image) return null;
+
+                      return (
+                        <div
+                          key={imageId}
+                          className="border border-border rounded-lg p-3 space-y-3"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-sm flex items-center gap-2">
+                                <Satellite className="h-4 w-4 text-primary" />
+                                {image.name}
+                              </h4>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {imageAnalyses.length} analysis
+                                {imageAnalyses.length !== 1 ? "es" : ""}{" "}
+                                completed
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            {imageAnalyses.map((analysis) => (
+                              <div
+                                key={analysis.id}
+                                className="p-2 rounded-md bg-muted/50 border border-border"
+                              >
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex-1">
+                                    <p className="font-medium text-xs">
+                                      {analysis.analysis_type_display}
+                                    </p>
+                                    {analysis.severity && (
+                                      <span
+                                        className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${getSeverityBadgeColor(
+                                          analysis.severity
+                                        )}`}
+                                      >
+                                        {analysis.severity_display}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {analysis.status === "completed" && (
+                                    <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+                                  )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                                  {analysis.confidence_score !== null && (
+                                    <div className="flex items-center gap-1 text-muted-foreground">
+                                      <TrendingUp className="h-3 w-3" />
+                                      <span>
+                                        Confidence:{" "}
+                                        {(
+                                          analysis.confidence_score * 100
+                                        ).toFixed(1)}
+                                        %
+                                      </span>
+                                    </div>
+                                  )}
+                                  {analysis.processing_time_seconds !==
+                                    null && (
+                                    <div className="flex items-center gap-1 text-muted-foreground">
+                                      <Clock className="h-3 w-3" />
+                                      <span>
+                                        {analysis.processing_time_seconds.toFixed(
+                                          1
+                                        )}
+                                        s
+                                      </span>
+                                    </div>
+                                  )}
+                                  {analysis.anomalies_count > 0 && (
+                                    <div className="flex items-center gap-1 text-muted-foreground col-span-2">
+                                      <AlertTriangle className="h-3 w-3 text-orange-500" />
+                                      <span>
+                                        {analysis.anomalies_count} anomal
+                                        {analysis.anomalies_count !== 1
+                                          ? "ies"
+                                          : "y"}{" "}
+                                        detected
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {Object.keys(analysis.results_json || {})
+                                  .length > 0 && (
+                                  <details className="mt-2">
+                                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                                      View details
+                                    </summary>
+                                    <div className="mt-2 p-2 bg-background rounded text-xs font-mono overflow-x-auto">
+                                      <pre className="whitespace-pre-wrap wrap-break-words">
+                                        {JSON.stringify(
+                                          analysis.results_json,
+                                          null,
+                                          2
+                                        )}
+                                      </pre>
+                                    </div>
+                                  </details>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                  {Object.keys(analysesByImage).length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No analysis results available. Run analysis on a satellite
+                      image to see results here.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
