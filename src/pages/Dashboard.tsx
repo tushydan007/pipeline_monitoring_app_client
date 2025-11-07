@@ -650,7 +650,7 @@ export default function Dashboard() {
               </div>
               <div className="flex flex-col">
                 <h1 className="text-2xl font-bold text-foreground leading-tight">
-                  Pipeline Monitor
+                  PF-FlowSafe
                 </h1>
                 <p className="text-xs text-muted-foreground">
                   Welcome, {user?.username}
