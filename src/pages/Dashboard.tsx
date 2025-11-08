@@ -912,23 +912,20 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                  {Object.entries(analysesByImage).map(
-                    ([imageId, imageAnalyses]) => {
-                      const image = satelliteImages.find(
-                        (img) => img.id === imageId
-                      );
-                      if (!image) return null;
-
-                      return (
-                        <div
-                          key={imageId}
-                          className="border border-border rounded-lg p-3 space-y-3"
-                        >
+                  {selectedImage === "all" ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      Please select a satellite image to view its analysis results.
+                    </p>
+                  ) : displayedImage ? (
+                    (() => {
+                      const imageAnalyses = analysesByImage[selectedImage] || [];
+                      return imageAnalyses.length > 0 ? (
+                        <div className="border border-border rounded-lg p-3 space-y-3">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <h4 className="font-semibold text-sm flex items-center gap-2">
                                 <Satellite className="h-4 w-4 text-primary" />
-                                {image.name}
+                                {displayedImage.name}
                               </h4>
                               <p className="text-xs text-muted-foreground mt-1">
                                 {imageAnalyses.length} analysis
@@ -1024,13 +1021,16 @@ export default function Dashboard() {
                             ))}
                           </div>
                         </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground text-center py-8">
+                          No analysis results available for this image. Run analysis on this satellite
+                          image to see results here.
+                        </p>
                       );
-                    }
-                  )}
-                  {Object.keys(analysesByImage).length === 0 && (
+                    })()
+                  ) : (
                     <p className="text-sm text-muted-foreground text-center py-8">
-                      No analysis results available. Run analysis on a satellite
-                      image to see results here.
+                      Selected image not found.
                     </p>
                   )}
                 </div>
