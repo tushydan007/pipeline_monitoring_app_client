@@ -1295,6 +1295,9 @@ import {
   TrendingUp,
   Clock,
   AlertCircle,
+  Radar,
+  Layers,
+  RefreshCw,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -1703,8 +1706,7 @@ export default function Dashboard() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<string>("all");
   const [selectedImage, setSelectedImage] = useState<string>("all");
-  const [pipelineGeoJSON, setPipelineGeoJSON] =
-    useState<GeoJSON.FeatureCollection | null>(null);
+  const [pipelineGeoJSON, setPipelineGeoJSON] = useState<GeoJSON.FeatureCollection | null>(null);
   const [isImageLoading, setIsImageLoading] = useState(false);
   const [imageLoadingError, setImageLoadingError] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -1934,25 +1936,26 @@ export default function Dashboard() {
   return (
     <TooltipProvider>
       <div className="h-screen flex flex-col bg-background text-foreground">
-        {/* Header */}
-        <header className="bg-card border-b border-border px-4 py-3 shadow-sm z-50">
+        {/* Modern Header */}
+        <header className="bg-card/95 backdrop-blur-sm border-b border-border px-6 py-4 shadow-lg z-50">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="absolute inset-0 bg-linear-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-lg blur-sm opacity-20"></div>
-                <div className="relative bg-linear-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-lg p-2 shadow-lg border border-border">
+            <div className="flex items-center gap-4">
+              {/* Modern Logo */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-linear-to-br from-blue-600 to-cyan-600 rounded-xl blur-md opacity-75 group-hover:opacity-100 transition-opacity"></div>
+                <div className="relative bg-linear-to-br from-blue-600 to-cyan-600 rounded-xl p-3 shadow-xl border-2 border-blue-400/50">
                   <div className="flex items-center justify-center">
-                    <Satellite className="h-5 w-5 text-white" />
-                    <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-md border border-border">
-                      <Gauge className="h-3 w-3 text-foreground" />
-                    </div>
+                    <Radar className="h-6 w-6 text-white animate-pulse" />
+                    <Layers className="h-4 w-4 text-white absolute -bottom-1 -right-1" />
                   </div>
                 </div>
               </div>
               <div className="flex flex-col">
-                <h1 className="text-xl font-bold leading-tight">PF-FlowSafe</h1>
-                <p className="text-xs text-muted-foreground">
-                  Welcome, {user?.username}
+                <h1 className="text-2xl font-bold bg-linear-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                  PF-FlowSafe
+                </h1>
+                <p className="text-xs text-muted-foreground font-medium">
+                  SAR Pipeline Monitoring • {user?.username}
                 </p>
               </div>
             </div>
@@ -1962,12 +1965,13 @@ export default function Dashboard() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="hover:bg-muted"
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                   >
                     {isSidebarOpen ? (
-                      <PanelLeftClose className="h-4 w-4" />
+                      <PanelLeftClose className="h-5 w-5" />
                     ) : (
-                      <PanelLeftOpen className="h-4 w-4" />
+                      <PanelLeftOpen className="h-5 w-5" />
                     )}
                   </Button>
                 </TooltipTrigger>
@@ -1980,12 +1984,13 @@ export default function Dashboard() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="hover:bg-muted"
                     onClick={() => setIsStatsVisible(!isStatsVisible)}
                   >
                     {isStatsVisible ? (
-                      <Minimize2 className="h-4 w-4" />
+                      <Minimize2 className="h-5 w-5" />
                     ) : (
-                      <BarChart3 className="h-4 w-4" />
+                      <BarChart3 className="h-5 w-5" />
                     )}
                   </Button>
                 </TooltipTrigger>
@@ -1993,109 +1998,151 @@ export default function Dashboard() {
                   {isStatsVisible ? "Hide stats" : "Show stats"}
                 </TooltipContent>
               </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="hover:bg-muted"
+                    onClick={() => loadData()}
+                    disabled={isDataLoading}
+                  >
+                    <RefreshCw
+                      className={`h-5 w-5 ${
+                        isDataLoading ? "animate-spin" : ""
+                      }`}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Refresh data</TooltipContent>
+              </Tooltip>
               <ThemeToggle />
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="relative"
+                    className="relative hover:bg-muted"
                     onClick={() => navigate("/notifications")}
                   >
-                    <Bell className="h-4 w-4" />
+                    <Bell className="h-5 w-5" />
                     {notifications.length > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 bg-destructive text-background text-xs rounded-full h-4 w-4 flex items-center justify-center font-medium">
+                      <span className="absolute -top-1 -right-1 bg-destructive text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold animate-pulse">
                         {notifications.length}
                       </span>
                     )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Notifications</TooltipContent>
+                <TooltipContent>
+                  {notifications.length} unread notification
+                  {notifications.length !== 1 ? "s" : ""}
+                </TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="hover:bg-muted"
                     onClick={() => navigate("/profile")}
                   >
-                    <User className="h-4 w-4" />
+                    <User className="h-5 w-5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Profile</TooltipContent>
+                <TooltipContent>Profile settings</TooltipContent>
               </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" onClick={handleLogout}>
-                    Logout
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Logout</TooltipContent>
-              </Tooltip>
+              <Button
+                variant="outline"
+                onClick={handleLogout}
+                className="font-medium"
+              >
+                Logout
+              </Button>
             </div>
           </div>
         </header>
 
-        {/* Stats Cards */}
+        {/* Enhanced Stats Cards */}
         {isStatsVisible && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-6 bg-linear-to-r from-muted/30 to-muted/10">
             {isDataLoading ? (
               <>
-                <Skeleton className="h-24 rounded-lg" />
-                <Skeleton className="h-24 rounded-lg" />
-                <Skeleton className="h-24 rounded-lg" />
-                <Skeleton className="h-24 rounded-lg" />
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-32 rounded-xl" />
+                ))}
               </>
             ) : (
               <>
-                <Card className="shadow-sm hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <Gauge className="h-4 w-4" />
+                <Card className="shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-l-blue-500 bg-linear-to-br from-card to-card/80">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                      <div className="p-2 bg-blue-500/10 rounded-lg">
+                        <Gauge className="h-4 w-4 text-blue-500" />
+                      </div>
                       Total Pipelines
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{pipelines.length}</div>
+                    <div className="text-3xl font-bold text-blue-600">
+                      {pipelines.length}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Monitoring active
+                    </p>
                   </CardContent>
                 </Card>
-                <Card className="shadow-sm hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <Satellite className="h-4 w-4" />
+                <Card className="shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-l-cyan-500 bg-linear-to-br from-card to-card/80">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                      <div className="p-2 bg-cyan-500/10 rounded-lg">
+                        <Satellite className="h-4 w-4 text-cyan-500" />
+                      </div>
                       Satellite Images
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <div className="text-3xl font-bold text-cyan-600">
                       {satelliteImages.length}
                     </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      SAR acquisitions
+                    </p>
                   </CardContent>
                 </Card>
-                <Card className="border-destructive/50 shadow-sm hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-destructive flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4" />
+                <Card className="shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-l-red-500 bg-linear-to-br from-card to-card/80">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                      <div className="p-2 bg-red-500/10 rounded-lg">
+                        <AlertTriangle className="h-4 w-4 text-red-500 animate-pulse" />
+                      </div>
                       Critical Anomalies
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-destructive">
+                    <div className="text-3xl font-bold text-red-600">
                       {criticalAnomalies}
                     </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Requires immediate attention
+                    </p>
                   </CardContent>
                 </Card>
-                <Card className="border-orange-500/50 shadow-sm hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-orange-600 dark:text-orange-400 flex items-center gap-2">
-                      <Activity className="h-4 w-4" />
+                <Card className="shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-l-orange-500 bg-linear-to-br from-card to-card/80">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                      <div className="p-2 bg-orange-500/10 rounded-lg">
+                        <Activity className="h-4 w-4 text-orange-500" />
+                      </div>
                       High Priority
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                    <div className="text-3xl font-bold text-orange-600">
                       {highAnomalies}
                     </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Priority investigations
+                    </p>
                   </CardContent>
                 </Card>
               </>
