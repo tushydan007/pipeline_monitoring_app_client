@@ -1,1245 +1,3 @@
-// import { useEffect, useState, useCallback, useRef } from "react";
-// import {
-//   MapContainer,
-//   TileLayer,
-//   GeoJSON,
-//   useMap,
-//   LayersControl,
-//   Marker,
-//   Popup,
-// } from "react-leaflet";
-// import { Icon, type LatLngTuple } from "leaflet";
-// import L from "leaflet";
-// import type { AxiosError } from "axios";
-// import {
-//   pipelineApi,
-//   satelliteImageApi,
-//   anomalyApi,
-//   notificationApi,
-//   analysisApi,
-// } from "@/lib/api";
-// import {
-//   type Pipeline,
-//   type SatelliteImage,
-//   type Anomaly,
-//   type Notification,
-//   type Analysis,
-// } from "@/types";
-// import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-// import { Button } from "@/components/ui/button";
-// import {
-//   Select,
-//   SelectContent,
-//   SelectItem,
-//   SelectTrigger,
-//   SelectValue,
-// } from "@/components/ui/select";
-// import { toast } from "react-toastify";
-// import {
-//   AlertTriangle,
-//   Bell,
-//   CheckCircle,
-//   XCircle,
-//   Activity,
-//   User,
-//   Loader2,
-//   Gauge,
-//   Satellite,
-//   PanelLeftClose,
-//   PanelLeftOpen,
-//   BarChart3,
-//   Minimize2,
-//   FileText,
-//   TrendingUp,
-//   Clock,
-// } from "lucide-react";
-// import { useNavigate } from "react-router-dom";
-// import { useAppDispatch, useAppSelector } from "@/store/hooks";
-// import { logout } from "@/store/authSlice";
-// import { ThemeToggle } from "@/components/ui/theme-toggle";
-// import "leaflet/dist/leaflet.css";
-
-// // Fix for default marker icons in react-leaflet
-// delete (Icon.Default.prototype as { _getIconUrl?: () => string })._getIconUrl;
-// Icon.Default.mergeOptions({
-//   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-//   iconRetinaUrl:
-//     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-//   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-// });
-
-// interface SatelliteImageLayerProps {
-//   image: SatelliteImage;
-//   onLoadingStart?: () => void;
-//   onLoadingEnd?: () => void;
-//   onError?: () => void;
-// }
-
-// function SatelliteImageLayer({
-//   image,
-//   onLoadingStart,
-//   onLoadingEnd,
-//   onError,
-// }: SatelliteImageLayerProps) {
-//   const map = useMap();
-//   const overlayRef = useRef<L.ImageOverlay | null>(null);
-//   const blobUrlRef = useRef<string | null>(null);
-//   const [bbox, setBbox] = useState<{
-//     minx: number;
-//     miny: number;
-//     maxx: number;
-//     maxy: number;
-//   } | null>(null);
-
-//   useEffect(() => {
-//     // First, check if we have bbox data
-//     let currentBbox: {
-//       minx: number;
-//       miny: number;
-//       maxx: number;
-//       maxy: number;
-//     } | null = null;
-
-//     if (image.bbox) {
-//       currentBbox = image.bbox;
-//     } else if (
-//       image.bbox_minx !== null &&
-//       image.bbox_miny !== null &&
-//       image.bbox_maxx !== null &&
-//       image.bbox_maxy !== null
-//     ) {
-//       currentBbox = {
-//         minx: image.bbox_minx,
-//         miny: image.bbox_miny,
-//         maxx: image.bbox_maxx,
-//         maxy: image.bbox_maxy,
-//       };
-//     }
-
-//     // Validate bbox coordinates are in WGS84 (lat/lon) format
-//     // Longitude should be between -180 and 180, latitude between -90 and 90
-//     const isValidWGS84 = (bbox: {
-//       minx: number;
-//       miny: number;
-//       maxx: number;
-//       maxy: number;
-//     }) => {
-//       return (
-//         bbox.minx >= -180 &&
-//         bbox.minx <= 180 &&
-//         bbox.maxx >= -180 &&
-//         bbox.maxx <= 180 &&
-//         bbox.miny >= -90 &&
-//         bbox.miny <= 90 &&
-//         bbox.maxy >= -90 &&
-//         bbox.maxy <= 90 &&
-//         bbox.minx < bbox.maxx &&
-//         bbox.miny < bbox.maxy
-//       );
-//     };
-
-//     // If bbox exists but coordinates look like projected (UTM) instead of WGS84, trigger re-extraction
-//     if (currentBbox && !isValidWGS84(currentBbox)) {
-//       console.warn(
-//         "Bbox coordinates appear to be in projected CRS, re-extracting with WGS84 transformation:",
-//         currentBbox
-//       );
-//       currentBbox = null; // Force re-extraction
-//     }
-
-//     // If no bbox, try to extract it using the extract_bbox endpoint
-//     if (!currentBbox && (image.is_cog_converted || image.original_tiff)) {
-//       satelliteImageApi
-//         .extractBbox(image.id)
-//         .then((response) => {
-//           if (
-//             response.data.bbox ||
-//             (response.data.bbox_minx &&
-//               response.data.bbox_miny &&
-//               response.data.bbox_maxx &&
-//               response.data.bbox_maxy)
-//           ) {
-//             const extractedBbox = response.data.bbox || {
-//               minx: response.data.bbox_minx,
-//               miny: response.data.bbox_miny,
-//               maxx: response.data.bbox_maxx,
-//               maxy: response.data.bbox_maxy,
-//             };
-//             setBbox(extractedBbox);
-//             console.log("Bbox extracted successfully:", extractedBbox);
-//           }
-//         })
-//         .catch((err) => {
-//           console.error("Error extracting bbox:", err);
-//           // Try display_image endpoint as fallback (it also extracts bbox)
-//           const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
-//           const imageUrl = `${API_BASE_URL}/satellite-images/${image.id}/display_image/`;
-//           fetch(imageUrl)
-//             .then(() => {
-//               // Wait a bit and reload image data
-//               setTimeout(() => {
-//                 satelliteImageApi
-//                   .getById(image.id)
-//                   .then((res) => {
-//                     if (
-//                       res.data.bbox ||
-//                       (res.data.bbox_minx &&
-//                         res.data.bbox_miny &&
-//                         res.data.bbox_maxx &&
-//                         res.data.bbox_maxy)
-//                     ) {
-//                       setBbox(
-//                         res.data.bbox || {
-//                           minx: res.data.bbox_minx,
-//                           miny: res.data.bbox_miny,
-//                           maxx: res.data.bbox_maxx,
-//                           maxy: res.data.bbox_maxy,
-//                         }
-//                       );
-//                     }
-//                   })
-//                   .catch(() => {});
-//               }, 500);
-//             })
-//             .catch((fetchErr) => {
-//               console.error("Error accessing display_image:", fetchErr);
-//             });
-//         });
-//       return;
-//     }
-
-//     if (!currentBbox) {
-//       console.warn("Satellite image missing bbox data:", {
-//         name: image.name,
-//         is_cog_converted: image.is_cog_converted,
-//         conversion_status: image.conversion_status,
-//       });
-//       return;
-//     }
-
-//     setBbox(currentBbox);
-//   }, [image, map]);
-
-//   useEffect(() => {
-//     if (!bbox) {
-//       // Clean up any existing overlay when bbox is cleared
-//       if (overlayRef.current) {
-//         try {
-//           map.removeLayer(overlayRef.current);
-//           overlayRef.current = null;
-//         } catch (e) {
-//           console.warn("Error removing overlay:", e);
-//         }
-//       }
-//       // Clear loading state when bbox is cleared
-//       onLoadingEnd?.();
-//       return;
-//     }
-
-//     const bounds: L.LatLngBoundsExpression = [
-//       [bbox.miny, bbox.minx],
-//       [bbox.maxy, bbox.maxx],
-//     ];
-
-//     // Clean up any existing overlay first
-//     if (overlayRef.current) {
-//       try {
-//         map.removeLayer(overlayRef.current);
-//         overlayRef.current = null;
-//       } catch (e) {
-//         console.warn("Error removing existing overlay:", e);
-//       }
-//     }
-
-//     // Use the display_image endpoint that converts TIFF to PNG for browser display
-//     // Construct the correct backend URL - Django is typically on port 8000
-//     const protocol = window.location.protocol;
-//     const hostname = window.location.hostname;
-//     // Use port 8000 for Django backend, or current port if different
-//     const backendPort =
-//       hostname === "localhost" ? "8000" : window.location.port || "8000";
-//     const imageUrl = `${protocol}//${hostname}:${backendPort}/api/satellite-images/${image.id}/display_image/`;
-
-//     console.log("Image URL constructed:", {
-//       imageUrl,
-//       hostname,
-//       port: backendPort,
-//       currentHost: window.location.host,
-//     });
-
-//     // Fetch the image with authentication using axios
-//     // This is necessary because Leaflet's imageOverlay doesn't send auth headers
-//     const loadImage = async () => {
-//       try {
-//         // Notify that loading has started
-//         onLoadingStart?.();
-
-//         console.log("Fetching satellite image with authentication:", {
-//           imageUrl,
-//           imageId: image.id,
-//         });
-
-//         // Fetch the image using axios with full URL and authentication
-//         // Create a new axios instance for this request to use the full URL
-//         const axios = (await import("axios")).default;
-//         const { getAccessToken } = await import("@/lib/jwt");
-//         const token = getAccessToken();
-
-//         const imageResponse = await axios.get(imageUrl, {
-//           responseType: "blob", // Important: request as blob
-//           headers: token ? { Authorization: `Bearer ${token}` } : {},
-//         });
-
-//         // Create a blob URL from the response
-//         const blob = imageResponse.data;
-//         const blobUrl = URL.createObjectURL(blob);
-//         blobUrlRef.current = blobUrl; // Store in ref for cleanup
-
-//         console.log("Image fetched successfully, creating overlay:", {
-//           blobSize: blob.size,
-//           blobType: blob.type,
-//           blobUrl,
-//         });
-
-//         // Create the overlay with the blob URL
-//         const overlay = L.imageOverlay(blobUrl, bounds, {
-//           opacity: 1.0,
-//           interactive: false,
-//           className: "satellite-image-overlay",
-//           zIndex: 1000,
-//           attribution: `Satellite Image: ${image.name}`,
-//         }).addTo(map);
-
-//         // Force the overlay to bring itself to front
-//         overlay.bringToFront();
-
-//         overlayRef.current = overlay;
-
-//         // Listen for when the image loads
-//         overlay.on("load", () => {
-//           console.log("Satellite image overlay loaded successfully", {
-//             bounds: bounds,
-//             imageName: image.name,
-//           });
-//           onLoadingEnd?.();
-//           // Try to fit bounds to the image after it loads
-//           try {
-//             map.fitBounds(bounds, { padding: [20, 20] });
-//           } catch (e) {
-//             console.warn("Could not fit bounds:", e);
-//           }
-//         });
-
-//         overlay.on("error", (err) => {
-//           console.error("Error loading satellite image overlay:", {
-//             error: err,
-//             imageId: image.id,
-//           });
-//           // Clean up blob URL on error
-//           if (blobUrlRef.current) {
-//             URL.revokeObjectURL(blobUrlRef.current);
-//             blobUrlRef.current = null;
-//           }
-//           onError?.();
-//           onLoadingEnd?.();
-//         });
-//       } catch (error) {
-//         const axiosError = error as AxiosError;
-//         console.error("Error fetching satellite image:", axiosError);
-//         // Check if it's an authentication error
-//         if (
-//           axiosError.response?.status === 401 ||
-//           axiosError.response?.status === 403
-//         ) {
-//           console.error("Authentication error - token may be expired");
-//         } else if (axiosError.response?.status === 404) {
-//           console.error("Image file not found on server");
-//         } else {
-//           console.error("Error response:", axiosError.response?.data);
-//         }
-//         // Clean up blob URL on error
-//         if (blobUrlRef.current) {
-//           URL.revokeObjectURL(blobUrlRef.current);
-//           blobUrlRef.current = null;
-//         }
-//         onError?.();
-//         onLoadingEnd?.();
-//       }
-//     };
-
-//     loadImage();
-
-//     return () => {
-//       if (overlayRef.current) {
-//         try {
-//           map.removeLayer(overlayRef.current);
-//           overlayRef.current = null;
-//         } catch (e) {
-//           console.warn("Error removing overlay:", e);
-//         }
-//       }
-//       // Clean up blob URL
-//       if (blobUrlRef.current) {
-//         URL.revokeObjectURL(blobUrlRef.current);
-//         blobUrlRef.current = null;
-//       }
-//     };
-//   }, [bbox, image, map, onLoadingStart, onLoadingEnd, onError]);
-
-//   return null;
-// }
-
-// interface MapBoundsUpdaterProps {
-//   geojson: GeoJSON.FeatureCollection | null;
-// }
-
-// function MapBoundsUpdater({ geojson }: MapBoundsUpdaterProps) {
-//   const map = useMap();
-
-//   useEffect(() => {
-//     if (!geojson) return;
-
-//     try {
-//       // Create a GeoJSON layer temporarily to get bounds
-//       const geojsonLayer = L.geoJSON(geojson);
-//       const bounds = geojsonLayer.getBounds();
-
-//       // Only fit bounds if they are valid
-//       if (bounds.isValid()) {
-//         map.fitBounds(bounds, { padding: [50, 50] });
-//       }
-//     } catch (error) {
-//       console.error("Error fitting map bounds:", error);
-//     }
-//   }, [geojson, map]);
-
-//   return null;
-// }
-
-// interface MapResizeHandlerProps {
-//   isSidebarOpen: boolean;
-//   isStatsVisible: boolean;
-// }
-
-// function MapResizeHandler({
-//   isSidebarOpen,
-//   isStatsVisible,
-// }: MapResizeHandlerProps) {
-//   const map = useMap();
-
-//   useEffect(() => {
-//     // Use a small timeout to ensure DOM has updated after sidebar state change
-//     const timeoutId = setTimeout(() => {
-//       try {
-//         map.invalidateSize();
-//       } catch (error) {
-//         console.error("Error invalidating map size:", error);
-//       }
-//     }, 100);
-
-//     return () => clearTimeout(timeoutId);
-//   }, [isSidebarOpen, isStatsVisible, map]);
-
-//   return null;
-// }
-
-// export default function Dashboard() {
-//   const navigate = useNavigate();
-//   const dispatch = useAppDispatch();
-//   const { user } = useAppSelector((state) => state.auth);
-
-//   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-//   const [satelliteImages, setSatelliteImages] = useState<SatelliteImage[]>([]);
-//   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
-//   const [analyses, setAnalyses] = useState<Analysis[]>([]);
-//   const [notifications, setNotifications] = useState<Notification[]>([]);
-//   const [selectedPipeline, setSelectedPipeline] = useState<string>("all");
-//   const [selectedImage, setSelectedImage] = useState<string>("all");
-//   const [pipelineGeoJSON, setPipelineGeoJSON] =
-//     useState<GeoJSON.FeatureCollection | null>(null);
-//   const [isImageLoading, setIsImageLoading] = useState(false);
-//   const [imageLoadingError, setImageLoadingError] = useState(false);
-//   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-//   const [isStatsVisible, setIsStatsVisible] = useState(true);
-
-//   const loadNotifications = useCallback(async () => {
-//     try {
-//       // Load unread notifications for display
-//       const notificationsResponse = await notificationApi.getAll({
-//         is_read: false,
-//       });
-//       const newNotifications =
-//         notificationsResponse.data.results || notificationsResponse.data;
-
-//       setNotifications((prevNotifications) => {
-//         if (newNotifications.length > prevNotifications.length) {
-//           toast.info(
-//             `You have ${newNotifications.length} new notification${
-//               newNotifications.length !== 1 ? "s" : ""
-//             }`
-//           );
-//         }
-//         return newNotifications;
-//       });
-//     } catch (error) {
-//       console.error("Failed to load notifications:", error);
-//     }
-//   }, []);
-
-//   const loadPipelineGeoJSON = useCallback(async (pipelineId: string) => {
-//     try {
-//       const response = await pipelineApi.getGeoJSON(pipelineId);
-//       // Ensure we have valid GeoJSON data
-//       if (
-//         response.data &&
-//         (response.data.type === "FeatureCollection" ||
-//           response.data.type === "Feature")
-//       ) {
-//         setPipelineGeoJSON(response.data);
-//       } else {
-//         console.error("Invalid GeoJSON format:", response.data);
-//         toast.error("Invalid GeoJSON file format");
-//         setPipelineGeoJSON(null);
-//       }
-//     } catch (error) {
-//       console.error("Failed to load GeoJSON:", error);
-//       toast.error("Failed to load pipeline GeoJSON");
-//       setPipelineGeoJSON(null);
-//     }
-//   }, []);
-
-//   const loadData = useCallback(async () => {
-//     try {
-//       const [
-//         pipelinesRes,
-//         imagesRes,
-//         anomaliesRes,
-//         analysesRes,
-//         notificationsRes,
-//       ] = await Promise.all([
-//         pipelineApi.getAll(),
-//         satelliteImageApi.getAll(),
-//         anomalyApi.getAll({ is_resolved: false }),
-//         analysisApi.getAll(),
-//         notificationApi.getAll({ is_read: false }),
-//       ]);
-
-//       setPipelines(pipelinesRes.data.results || pipelinesRes.data);
-//       setSatelliteImages(imagesRes.data.results || imagesRes.data);
-//       setAnomalies(anomaliesRes.data.results || anomaliesRes.data);
-//       // Filter to only completed analyses
-//       const completedAnalyses = (
-//         analysesRes.data.results || analysesRes.data
-//       ).filter((a: Analysis) => a.status === "completed");
-//       setAnalyses(completedAnalyses);
-//       setNotifications(notificationsRes.data.results || notificationsRes.data);
-
-//       // Load GeoJSON for selected pipeline
-//       if (selectedPipeline !== "all") {
-//         loadPipelineGeoJSON(selectedPipeline);
-//       }
-//     } catch (error) {
-//       toast.error("Failed to load data");
-//       console.error(error);
-//     }
-//   }, [selectedPipeline, loadPipelineGeoJSON]);
-
-//   useEffect(() => {
-//     loadData();
-//     // Load notifications immediately and then every 10 seconds for real-time updates
-//     loadNotifications();
-//     const notificationsInterval = setInterval(loadNotifications, 10000);
-//     return () => clearInterval(notificationsInterval);
-//   }, [loadData, loadNotifications]);
-
-//   const handleLogout = async () => {
-//     await dispatch(logout());
-//     navigate("/login");
-//   };
-
-//   const filteredImages =
-//     selectedPipeline === "all"
-//       ? satelliteImages
-//       : satelliteImages.filter((img) => img.pipeline === selectedPipeline);
-
-//   const displayedImage =
-//     selectedImage === "all"
-//       ? null
-//       : satelliteImages.find((img) => img.id === selectedImage);
-
-//   // Format creation date for display
-//   const formatImageDate = (dateString: string) => {
-//     const date = new Date(dateString);
-//     return date.toLocaleDateString("en-US", {
-//       year: "numeric",
-//       month: "short",
-//       day: "numeric",
-//     });
-//   };
-
-//   // Group analyses by satellite image
-//   const analysesByImage = analyses.reduce((acc, analysis) => {
-//     const imageId = analysis.satellite_image;
-//     if (!acc[imageId]) {
-//       acc[imageId] = [];
-//     }
-//     acc[imageId].push(analysis);
-//     return acc;
-//   }, {} as Record<string, Analysis[]>);
-
-//   // Get severity badge color
-//   const getSeverityBadgeColor = (severity: string | null) => {
-//     switch (severity) {
-//       case "critical":
-//         return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
-//       case "high":
-//         return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300";
-//       case "medium":
-//         return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300";
-//       case "low":
-//         return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
-//       default:
-//         return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300";
-//     }
-//   };
-
-//   // Debug: Log displayed image info and extract bbox if missing
-//   useEffect(() => {
-//     // Reset loading state when displayed image changes
-//     setIsImageLoading(false);
-//     setImageLoadingError(false);
-
-//     if (displayedImage) {
-//       console.log("Displayed Image:", {
-//         id: displayedImage.id,
-//         name: displayedImage.name,
-//         is_cog_converted: displayedImage.is_cog_converted,
-//         cog_url: displayedImage.cog_url,
-//         original_url: displayedImage.original_url,
-//         bbox: displayedImage.bbox,
-//         bbox_fields: {
-//           minx: displayedImage.bbox_minx,
-//           miny: displayedImage.bbox_miny,
-//           maxx: displayedImage.bbox_maxx,
-//           maxy: displayedImage.bbox_maxy,
-//         },
-//         conversion_status: displayedImage.conversion_status,
-//       });
-
-//       // If bbox is missing, try to trigger extraction by accessing display_image endpoint
-//       // This will extract bbox on the backend if missing
-//       const hasBbox =
-//         displayedImage.bbox ||
-//         (displayedImage.bbox_minx !== null &&
-//           displayedImage.bbox_miny !== null &&
-//           displayedImage.bbox_maxx !== null &&
-//           displayedImage.bbox_maxy !== null);
-
-//       if (
-//         !hasBbox &&
-//         (displayedImage.is_cog_converted || displayedImage.original_tiff)
-//       ) {
-//         // Access display_image endpoint which will extract bbox if missing
-//         const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
-//         const imageUrl = `${API_BASE_URL}/satellite-images/${displayedImage.id}/display_image/`;
-//         // Create a hidden image to trigger bbox extraction
-//         const img = new Image();
-//         img.onload = () => {
-//           console.log(
-//             "Image loaded, bbox should be extracted now. Refreshing data..."
-//           );
-//           // Reload satellite images to get updated bbox
-//           setTimeout(() => {
-//             loadData();
-//           }, 1000);
-//         };
-//         img.onerror = (err: Event | string) => {
-//           console.error("Error loading display image:", err);
-//         };
-//         img.src = imageUrl;
-//       }
-//     }
-//     // eslint-disable-next-line react-hooks/exhaustive-deps
-//   }, [displayedImage]);
-
-//   // Memoize callbacks for SatelliteImageLayer to prevent unnecessary re-renders
-//   const handleImageLoadingStart = useCallback(() => {
-//     setIsImageLoading(true);
-//     setImageLoadingError(false);
-//   }, []);
-
-//   const handleImageLoadingEnd = useCallback(() => {
-//     setIsImageLoading(false);
-//   }, []);
-
-//   const handleImageError = useCallback(() => {
-//     setImageLoadingError(true);
-//     setIsImageLoading(false);
-//   }, []);
-
-//   const criticalAnomalies = anomalies.filter(
-//     (a) => a.severity === "critical"
-//   ).length;
-//   const highAnomalies = anomalies.filter((a) => a.severity === "high").length;
-
-//   return (
-//     <div className="h-screen flex flex-col bg-background">
-//       {/* Header */}
-//       <header className="bg-card border-b border-border px-6 py-4 shadow-sm">
-//         <div className="flex items-center justify-between">
-//           <div className="flex items-center gap-4">
-//             {/* Logo */}
-//             <div className="flex items-center gap-3">
-//               <div className="relative">
-//                 <div className="absolute inset-0 bg-gray-900/20 dark:bg-gray-800/30 rounded-lg blur-sm"></div>
-//                 <div className="relative bg-linear-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-lg p-2.5 shadow-lg border border-gray-700/50 dark:border-gray-600/50">
-//                   <div className="flex items-center justify-center">
-//                     <Satellite className="h-6 w-6 text-white" />
-//                     <div className="absolute -bottom-1 -right-1 bg-white dark:bg-gray-100 rounded-full p-0.5 shadow-md border border-gray-300 dark:border-gray-400">
-//                       <Gauge className="h-3 w-3 text-gray-900 dark:text-gray-800" />
-//                     </div>
-//                   </div>
-//                 </div>
-//               </div>
-//               <div className="flex flex-col">
-//                 <h1 className="text-2xl font-bold text-foreground leading-tight">
-//                   PF-FlowSafe
-//                 </h1>
-//                 <p className="text-xs text-muted-foreground">
-//                   Welcome, {user?.username}
-//                 </p>
-//               </div>
-//             </div>
-//           </div>
-//           <div className="flex items-center gap-4">
-//             <Button
-//               variant="outline"
-//               size="icon"
-//               className="cursor-pointer"
-//               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-//               title={isSidebarOpen ? "Hide sidebar" : "Show sidebar"}
-//             >
-//               {isSidebarOpen ? (
-//                 <PanelLeftClose className="h-5 w-5" />
-//               ) : (
-//                 <PanelLeftOpen className="h-5 w-5" />
-//               )}
-//             </Button>
-//             <Button
-//               variant="outline"
-//               size="icon"
-//               className="cursor-pointer"
-//               onClick={() => setIsStatsVisible(!isStatsVisible)}
-//               title={isStatsVisible ? "Hide stats" : "Show stats"}
-//             >
-//               {isStatsVisible ? (
-//                 <Minimize2 className="h-5 w-5" />
-//               ) : (
-//                 <BarChart3 className="h-5 w-5" />
-//               )}
-//             </Button>
-//             <ThemeToggle />
-//             <div className="relative">
-//               <Button
-//                 variant="outline"
-//                 size="icon"
-//                 className="relative cursor-pointer"
-//                 onClick={() => navigate("/notifications")}
-//               >
-//                 <Bell className="h-5 w-5" />
-//                 {notifications.length > 0 && (
-//                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-//                     {notifications.length}
-//                   </span>
-//                 )}
-//               </Button>
-//             </div>
-//             <Button
-//               variant="outline"
-//               onClick={() => navigate("/profile")}
-//               size="icon"
-//               className="cursor-pointer"
-//             >
-//               <User className="h-5 w-5" />
-//             </Button>
-//             <Button
-//               variant="outline"
-//               onClick={handleLogout}
-//               className="cursor-pointer"
-//             >
-//               Logout
-//             </Button>
-//           </div>
-//         </div>
-//       </header>
-
-//       {/* Stats Cards */}
-//       {isStatsVisible && (
-//         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6">
-//           <Card>
-//             <CardHeader className="pb-2">
-//               <CardTitle className="text-sm font-medium text-muted-foreground">
-//                 Total Pipelines
-//               </CardTitle>
-//             </CardHeader>
-//             <CardContent>
-//               <div className="text-2xl font-bold text-foreground">
-//                 {pipelines.length}
-//               </div>
-//             </CardContent>
-//           </Card>
-//           <Card>
-//             <CardHeader className="pb-2">
-//               <CardTitle className="text-sm font-medium text-muted-foreground">
-//                 Satellite Images
-//               </CardTitle>
-//             </CardHeader>
-//             <CardContent>
-//               <div className="text-2xl font-bold text-foreground">
-//                 {satelliteImages.length}
-//               </div>
-//             </CardContent>
-//           </Card>
-//           <Card className="border-destructive/50">
-//             <CardHeader className="pb-2">
-//               <CardTitle className="text-sm font-medium text-destructive flex items-center gap-2">
-//                 <AlertTriangle className="h-4 w-4" />
-//                 Critical Anomalies
-//               </CardTitle>
-//             </CardHeader>
-//             <CardContent>
-//               <div className="text-2xl font-bold text-destructive">
-//                 {criticalAnomalies}
-//               </div>
-//             </CardContent>
-//           </Card>
-//           <Card className="border-orange-500/50">
-//             <CardHeader className="pb-2">
-//               <CardTitle className="text-sm font-medium text-orange-600 dark:text-orange-400 flex items-center gap-2">
-//                 <Activity className="h-4 w-4" />
-//                 High Priority
-//               </CardTitle>
-//             </CardHeader>
-//             <CardContent>
-//               <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-//                 {highAnomalies}
-//               </div>
-//             </CardContent>
-//           </Card>
-//         </div>
-//       )}
-
-//       {/* Controls and Map */}
-//       <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 overflow-hidden">
-//         {/* Sidebar */}
-//         {isSidebarOpen && (
-//           <div className="lg:col-span-1 space-y-4 overflow-y-auto">
-//             <Card>
-//               <CardHeader>
-//                 <CardTitle className="text-lg">Filters</CardTitle>
-//               </CardHeader>
-//               <CardContent className="space-y-4">
-//                 <div>
-//                   <label className="text-sm font-medium mb-2 block">
-//                     Pipeline
-//                   </label>
-//                   <Select
-//                     value={selectedPipeline}
-//                     onValueChange={(value) => {
-//                       setSelectedPipeline(value);
-//                       if (value !== "all") {
-//                         loadPipelineGeoJSON(value);
-//                       } else {
-//                         setPipelineGeoJSON(null);
-//                       }
-//                     }}
-//                   >
-//                     <SelectTrigger>
-//                       <SelectValue placeholder="Select pipeline" />
-//                     </SelectTrigger>
-//                     <SelectContent>
-//                       <SelectItem value="all">Select Pipeline</SelectItem>
-//                       {pipelines.map((pipeline) => (
-//                         <SelectItem key={pipeline.id} value={pipeline.id}>
-//                           {pipeline.name}
-//                         </SelectItem>
-//                       ))}
-//                     </SelectContent>
-//                   </Select>
-//                 </div>
-//                 <div>
-//                   <label className="text-sm font-medium mb-2 block">
-//                     Satellite Image
-//                   </label>
-//                   <Select
-//                     value={selectedImage}
-//                     onValueChange={(value) => {
-//                       setSelectedImage(value);
-//                       setIsImageLoading(false);
-//                       setImageLoadingError(false);
-//                     }}
-//                   >
-//                     <SelectTrigger>
-//                       <SelectValue placeholder="Select image" />
-//                     </SelectTrigger>
-//                     <SelectContent>
-//                       <SelectItem value="all">Select Image</SelectItem>
-//                       {filteredImages.map((image) => (
-//                         <SelectItem
-//                           key={image.id}
-//                           value={image.id}
-//                           className="[&>span:last-child]:flex [&>span:last-child]:items-center [&>span:last-child]:justify-between [&>span:last-child]:w-full"
-//                         >
-//                           <span className="flex-1 truncate">{image.name}</span>
-//                           <span className="text-xs text-muted-foreground ml-4 shrink-0">
-//                             {formatImageDate(image.created_at)}
-//                           </span>
-//                         </SelectItem>
-//                       ))}
-//                     </SelectContent>
-//                   </Select>
-//                 </div>
-//               </CardContent>
-//             </Card>
-
-//             {/* Analysis Results */}
-//             <Card>
-//               <CardHeader>
-//                 <CardTitle className="text-lg flex items-center gap-2">
-//                   <FileText className="h-5 w-5" />
-//                   Analysis Results
-//                 </CardTitle>
-//               </CardHeader>
-//               <CardContent>
-//                 <div className="space-y-4 max-h-[600px] overflow-y-auto">
-//                   {selectedImage === "all" ? (
-//                     <p className="text-sm text-muted-foreground text-center py-8">
-//                       Please select a satellite image to view its analysis results.
-//                     </p>
-//                   ) : displayedImage ? (
-//                     (() => {
-//                       const imageAnalyses = analysesByImage[selectedImage] || [];
-//                       return imageAnalyses.length > 0 ? (
-//                         <div className="border border-border rounded-lg p-3 space-y-3">
-//                           <div className="flex items-start justify-between">
-//                             <div className="flex-1">
-//                               <h4 className="font-semibold text-sm flex items-center gap-2">
-//                                 <Satellite className="h-4 w-4 text-primary" />
-//                                 {displayedImage.name}
-//                               </h4>
-//                               <p className="text-xs text-muted-foreground mt-1">
-//                                 {imageAnalyses.length} analysis
-//                                 {imageAnalyses.length !== 1 ? "es" : ""}{" "}
-//                                 completed
-//                               </p>
-//                             </div>
-//                           </div>
-
-//                           <div className="space-y-2">
-//                             {imageAnalyses.map((analysis) => (
-//                               <div
-//                                 key={analysis.id}
-//                                 className="p-2 rounded-md bg-muted/50 border border-border"
-//                               >
-//                                 <div className="flex items-start justify-between mb-2">
-//                                   <div className="flex-1">
-//                                     <p className="font-medium text-xs">
-//                                       {analysis.analysis_type_display}
-//                                     </p>
-//                                     {analysis.severity && (
-//                                       <span
-//                                         className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${getSeverityBadgeColor(
-//                                           analysis.severity
-//                                         )}`}
-//                                       >
-//                                         {analysis.severity_display}
-//                                       </span>
-//                                     )}
-//                                   </div>
-//                                   {analysis.status === "completed" && (
-//                                     <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-//                                   )}
-//                                 </div>
-
-//                                 <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
-//                                   {analysis.confidence_score !== null && (
-//                                     <div className="flex items-center gap-1 text-muted-foreground">
-//                                       <TrendingUp className="h-3 w-3" />
-//                                       <span>
-//                                         Confidence:{" "}
-//                                         {(
-//                                           analysis.confidence_score * 100
-//                                         ).toFixed(1)}
-//                                         %
-//                                       </span>
-//                                     </div>
-//                                   )}
-//                                   {analysis.processing_time_seconds !==
-//                                     null && (
-//                                     <div className="flex items-center gap-1 text-muted-foreground">
-//                                       <Clock className="h-3 w-3" />
-//                                       <span>
-//                                         {analysis.processing_time_seconds.toFixed(
-//                                           1
-//                                         )}
-//                                         s
-//                                       </span>
-//                                     </div>
-//                                   )}
-//                                   {analysis.anomalies_count > 0 && (
-//                                     <div className="flex items-center gap-1 text-muted-foreground col-span-2">
-//                                       <AlertTriangle className="h-3 w-3 text-orange-500" />
-//                                       <span>
-//                                         {analysis.anomalies_count} anomal
-//                                         {analysis.anomalies_count !== 1
-//                                           ? "ies"
-//                                           : "y"}{" "}
-//                                         detected
-//                                       </span>
-//                                     </div>
-//                                   )}
-//                                 </div>
-
-//                                 {Object.keys(analysis.results_json || {})
-//                                   .length > 0 && (
-//                                   <details className="mt-2">
-//                                     <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-//                                       View details
-//                                     </summary>
-//                                     <div className="mt-2 p-2 bg-background rounded text-xs font-mono overflow-x-auto">
-//                                       <pre className="whitespace-pre-wrap wrap-break-words">
-//                                         {JSON.stringify(
-//                                           analysis.results_json,
-//                                           null,
-//                                           2
-//                                         )}
-//                                       </pre>
-//                                     </div>
-//                                   </details>
-//                                 )}
-//                               </div>
-//                             ))}
-//                           </div>
-//                         </div>
-//                       ) : (
-//                         <p className="text-sm text-muted-foreground text-center py-8">
-//                           No analysis results available for this image. Run analysis on this satellite
-//                           image to see results here.
-//                         </p>
-//                       );
-//                     })()
-//                   ) : (
-//                     <p className="text-sm text-muted-foreground text-center py-8">
-//                       Selected image not found.
-//                     </p>
-//                   )}
-//                 </div>
-//               </CardContent>
-//             </Card>
-
-//             {/* Anomalies List */}
-//             <Card>
-//               <CardHeader>
-//                 <CardTitle className="text-lg">Recent Anomalies</CardTitle>
-//               </CardHeader>
-//               <CardContent>
-//                 <div className="space-y-2 max-h-96 overflow-y-auto">
-//                   {anomalies.slice(0, 10).map((anomaly) => (
-//                     <div
-//                       key={anomaly.id}
-//                       className={`p-3 rounded-lg border ${
-//                         anomaly.severity === "critical"
-//                           ? "border-red-200 bg-red-50 dark:bg-red-900/20"
-//                           : anomaly.severity === "high"
-//                           ? "border-orange-200 bg-orange-50 dark:bg-orange-900/20"
-//                           : "border-gray-200 bg-gray-50 dark:bg-gray-800"
-//                       }`}
-//                     >
-//                       <div className="flex items-start justify-between">
-//                         <div className="flex-1">
-//                           <p className="font-medium text-sm">
-//                             {anomaly.anomaly_type_display}
-//                           </p>
-//                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-//                             {anomaly.severity_display}
-//                           </p>
-//                         </div>
-//                         {anomaly.is_resolved ? (
-//                           <CheckCircle className="h-4 w-4 text-green-500" />
-//                         ) : (
-//                           <XCircle className="h-4 w-4 text-red-500" />
-//                         )}
-//                       </div>
-//                     </div>
-//                   ))}
-//                   {anomalies.length === 0 && (
-//                     <p className="text-sm text-gray-500 text-center py-4">
-//                       No anomalies detected
-//                     </p>
-//                   )}
-//                 </div>
-//               </CardContent>
-//             </Card>
-//           </div>
-//         )}
-
-//         {/* Map */}
-//         <div
-//           className={`rounded-lg overflow-hidden border border-border relative transition-all duration-300 ${
-//             isSidebarOpen ? "lg:col-span-3" : "lg:col-span-4"
-//           }`}
-//         >
-//           {/* Loading indicator */}
-//           {isImageLoading && (
-//             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10000 bg-card border border-border rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
-//               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-//               <span className="text-sm font-medium text-foreground">
-//                 Loading satellite image...
-//               </span>
-//             </div>
-//           )}
-//           {/* Error indicator */}
-//           {imageLoadingError && !isImageLoading && (
-//             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10000 bg-destructive/10 border border-destructive/50 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
-//               <AlertTriangle className="h-5 w-5 text-destructive" />
-//               <span className="text-sm font-medium text-destructive">
-//                 Failed to load satellite image. Please try again.
-//               </span>
-//             </div>
-//           )}
-//           <MapContainer
-//             center={[20, 0]}
-//             zoom={2}
-//             style={{ height: "100%", width: "100%" }}
-//             zoomControl={true}
-//           >
-//             <MapBoundsUpdater geojson={pipelineGeoJSON} />
-//             <MapResizeHandler
-//               isSidebarOpen={isSidebarOpen}
-//               isStatsVisible={isStatsVisible}
-//             />
-//             <LayersControl position="topright">
-//               {/* Base Layers */}
-//               <LayersControl.BaseLayer checked name="OpenStreetMap">
-//                 <TileLayer
-//                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-//                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-//                 />
-//               </LayersControl.BaseLayer>
-
-//               <LayersControl.BaseLayer name="Satellite">
-//                 <TileLayer
-//                   attribution='&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.mapbox.com/about/maps/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-//                   url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-//                 />
-//               </LayersControl.BaseLayer>
-
-//               <LayersControl.BaseLayer name="Terrain">
-//                 <TileLayer
-//                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://www.openstreetmap.org/copyright">OpenTopoMap</a>'
-//                   url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
-//                 />
-//               </LayersControl.BaseLayer>
-
-//               {/* Overlays */}
-//               {pipelineGeoJSON && (
-//                 <LayersControl.Overlay checked name="Pipeline Routes">
-//                   <GeoJSON
-//                     key={selectedPipeline}
-//                     data={pipelineGeoJSON}
-//                     style={{
-//                       color: "#3b82f6",
-//                       weight: 3,
-//                       opacity: 0.8,
-//                     }}
-//                     onEachFeature={(
-//                       feature: GeoJSON.Feature,
-//                       layer: L.Layer
-//                     ) => {
-//                       if (feature.properties) {
-//                         const popupContent = Object.keys(feature.properties)
-//                           .map(
-//                             (key) =>
-//                               `<strong>${key}:</strong> ${String(
-//                                 feature.properties?.[key] ?? ""
-//                               )}`
-//                           )
-//                           .join("<br>");
-//                         layer.bindPopup(popupContent);
-//                       }
-//                     }}
-//                   />
-//                 </LayersControl.Overlay>
-//               )}
-
-//               {displayedImage &&
-//                 (displayedImage.is_cog_converted ||
-//                   displayedImage.original_tiff) &&
-//                 (displayedImage.bbox ||
-//                   (displayedImage.bbox_minx !== null &&
-//                     displayedImage.bbox_miny !== null &&
-//                     displayedImage.bbox_maxx !== null &&
-//                     displayedImage.bbox_maxy !== null)) && (
-//                   <LayersControl.Overlay checked name={displayedImage.name}>
-//                     <SatelliteImageLayer
-//                       image={displayedImage}
-//                       onLoadingStart={handleImageLoadingStart}
-//                       onLoadingEnd={handleImageLoadingEnd}
-//                       onError={handleImageError}
-//                     />
-//                   </LayersControl.Overlay>
-//                 )}
-
-//               {anomalies.length > 0 && (
-//                 <LayersControl.Overlay checked name="Anomalies">
-//                   {anomalies.map((anomaly) => {
-//                     const iconUrl =
-//                       anomaly.severity === "critical"
-//                         ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
-//                         : anomaly.severity === "high"
-//                         ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png"
-//                         : "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png";
-
-//                     const customIcon = new Icon({
-//                       iconUrl,
-//                       iconSize: [25, 41],
-//                       iconAnchor: [12, 41],
-//                     });
-
-//                     const position: LatLngTuple = [
-//                       anomaly.location_lat,
-//                       anomaly.location_lon,
-//                     ];
-
-//                     return (
-//                       <Marker
-//                         key={anomaly.id}
-//                         position={position}
-//                         icon={customIcon}
-//                       >
-//                         <Popup>
-//                           <div>
-//                             <strong>{anomaly.anomaly_type_display}</strong>
-//                             <br />
-//                             Severity: {anomaly.severity_display}
-//                             <br />
-//                             Confidence:{" "}
-//                             {(anomaly.confidence_score * 100).toFixed(1)}%
-//                           </div>
-//                         </Popup>
-//                       </Marker>
-//                     );
-//                   })}
-//                 </LayersControl.Overlay>
-//               )}
-//             </LayersControl>
-//           </MapContainer>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   MapContainer,
@@ -1297,6 +55,10 @@ import {
   AlertCircle,
   Radar,
   Layers,
+  MapPin,
+  Filter,
+  Eye,
+  EyeOff,
   RefreshCw,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -1317,6 +79,9 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 
 // Fix for default marker icons in react-leaflet
 delete (Icon.Default.prototype as { _getIconUrl?: () => string })._getIconUrl;
@@ -1331,7 +96,8 @@ interface SatelliteImageLayerProps {
   image: SatelliteImage;
   onLoadingStart: () => void;
   onLoadingEnd: () => void;
-  onError: () => void;
+  onError: (error: string) => void;
+  onSuccess: () => void;
 }
 
 function SatelliteImageLayer({
@@ -1339,6 +105,7 @@ function SatelliteImageLayer({
   onLoadingStart,
   onLoadingEnd,
   onError,
+  onSuccess,
 }: SatelliteImageLayerProps) {
   const map = useMap();
   const overlayRef = useRef<L.ImageOverlay | null>(null);
@@ -1349,9 +116,9 @@ function SatelliteImageLayer({
     maxx: number;
     maxy: number;
   } | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
-    // First, check if we have bbox data
     let currentBbox: {
       minx: number;
       miny: number;
@@ -1375,8 +142,6 @@ function SatelliteImageLayer({
       };
     }
 
-    // Validate bbox coordinates are in WGS84 (lat/lon) format
-    // Longitude should be between -180 and 180, latitude between -90 and 90
     const isValidWGS84 = (bbox: {
       minx: number;
       miny: number;
@@ -1397,91 +162,48 @@ function SatelliteImageLayer({
       );
     };
 
-    // If bbox exists but coordinates look like projected (UTM) instead of WGS84, trigger re-extraction
     if (currentBbox && !isValidWGS84(currentBbox)) {
-      console.warn(
-        "Bbox coordinates appear to be in projected CRS, re-extracting with WGS84 transformation:",
-        currentBbox
-      );
-      currentBbox = null; // Force re-extraction
+      console.warn("Invalid bbox coordinates, re-extracting:", currentBbox);
+      currentBbox = null;
     }
 
-    // If no bbox, try to extract it using the extract_bbox endpoint
-    if (!currentBbox && (image.is_cog_converted || image.original_tiff)) {
+    if (
+      !currentBbox &&
+      (image.is_cog_converted || image.original_tiff) &&
+      !isProcessing
+    ) {
+      setIsProcessing(true);
       satelliteImageApi
         .extractBbox(image.id)
         .then((response) => {
-          if (
-            response.data.bbox ||
-            (response.data.bbox_minx &&
-              response.data.bbox_miny &&
-              response.data.bbox_maxx &&
-              response.data.bbox_maxy)
-          ) {
-            const extractedBbox = response.data.bbox || {
-              minx: response.data.bbox_minx,
-              miny: response.data.bbox_miny,
-              maxx: response.data.bbox_maxx,
-              maxy: response.data.bbox_maxy,
-            };
+          const extractedBbox = response.data.bbox || {
+            minx: response.data.bbox_minx,
+            miny: response.data.bbox_miny,
+            maxx: response.data.bbox_maxx,
+            maxy: response.data.bbox_maxy,
+          };
+          if (extractedBbox && isValidWGS84(extractedBbox)) {
             setBbox(extractedBbox);
-            console.log("Bbox extracted successfully:", extractedBbox);
           }
         })
         .catch((err) => {
           console.error("Error extracting bbox:", err);
-          // Try display_image endpoint as fallback (it also extracts bbox)
-          const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
-          const imageUrl = `${API_BASE_URL}/satellite-images/${image.id}/display_image/`;
-          fetch(imageUrl)
-            .then(() => {
-              // Wait a bit and reload image data
-              setTimeout(() => {
-                satelliteImageApi
-                  .getById(image.id)
-                  .then((res) => {
-                    if (
-                      res.data.bbox ||
-                      (res.data.bbox_minx &&
-                        res.data.bbox_miny &&
-                        res.data.bbox_maxx &&
-                        res.data.bbox_maxy)
-                    ) {
-                      setBbox(
-                        res.data.bbox || {
-                          minx: res.data.bbox_minx,
-                          miny: res.data.bbox_miny,
-                          maxx: res.data.bbox_maxx,
-                          maxy: res.data.bbox_maxy,
-                        }
-                      );
-                    }
-                  })
-                  .catch(() => {});
-              }, 500);
-            })
-            .catch((fetchErr) => {
-              console.error("Error accessing display_image:", fetchErr);
-            });
+        })
+        .finally(() => {
+          setIsProcessing(false);
         });
       return;
     }
 
     if (!currentBbox) {
-      console.warn("Satellite image missing bbox data:", {
-        name: image.name,
-        is_cog_converted: image.is_cog_converted,
-        conversion_status: image.conversion_status,
-      });
       return;
     }
 
     setBbox(currentBbox);
-  }, [image, map]);
+  }, [image, isProcessing]);
 
   useEffect(() => {
     if (!bbox) {
-      // Clean up any existing overlay when bbox is cleared
       if (overlayRef.current) {
         try {
           map.removeLayer(overlayRef.current);
@@ -1490,7 +212,6 @@ function SatelliteImageLayer({
           console.warn("Error removing overlay:", e);
         }
       }
-      // Clear loading state when bbox is cleared
       onLoadingEnd();
       return;
     }
@@ -1500,7 +221,6 @@ function SatelliteImageLayer({
       [bbox.maxy, bbox.maxx],
     ];
 
-    // Clean up any existing overlay first
     if (overlayRef.current) {
       try {
         map.removeLayer(overlayRef.current);
@@ -1510,31 +230,15 @@ function SatelliteImageLayer({
       }
     }
 
-    // Use the display_image endpoint that converts TIFF to PNG for browser display
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
     const backendPort =
       hostname === "localhost" ? "8000" : window.location.port || "8000";
     const imageUrl = `${protocol}//${hostname}:${backendPort}/api/satellite-images/${image.id}/display_image/`;
 
-    console.log("Image URL constructed:", {
-      imageUrl,
-      hostname,
-      port: backendPort,
-      currentHost: window.location.host,
-    });
-
-    // Fetch the image with authentication using axios
-    // This is necessary because Leaflet's imageOverlay doesn't send auth headers
     const loadImage = async () => {
       try {
-        // Notify that loading has started
         onLoadingStart();
-
-        console.log("Fetching satellite image with authentication:", {
-          imageUrl,
-          imageId: image.id,
-        });
 
         const axios = (await import("axios")).default;
         const { getAccessToken } = await import("@/lib/jwt");
@@ -1543,73 +247,63 @@ function SatelliteImageLayer({
         const imageResponse = await axios.get(imageUrl, {
           responseType: "blob",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
+          timeout: 30000, // 30 second timeout
         });
 
         const blob = imageResponse.data;
         const blobUrl = URL.createObjectURL(blob);
         blobUrlRef.current = blobUrl;
 
-        console.log("Image fetched successfully, creating overlay:", {
-          blobSize: blob.size,
-          blobType: blob.type,
-          blobUrl,
-        });
-
         const overlay = L.imageOverlay(blobUrl, bounds, {
-          opacity: 1.0,
+          opacity: 0.85,
           interactive: false,
           className: "satellite-image-overlay",
           zIndex: 1000,
-          attribution: `Satellite Image: ${image.name}`,
         }).addTo(map);
 
         overlay.bringToFront();
-
         overlayRef.current = overlay;
 
         overlay.on("load", () => {
-          console.log("Satellite image overlay loaded successfully", {
-            bounds: bounds,
-            imageName: image.name,
-          });
           onLoadingEnd();
+          onSuccess();
           try {
-            map.fitBounds(bounds, { padding: [20, 20] });
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
           } catch (e) {
             console.warn("Could not fit bounds:", e);
           }
         });
 
         overlay.on("error", (err) => {
-          console.error("Error loading satellite image overlay:", {
-            error: err,
-            imageId: image.id,
-          });
+          console.error("Error loading overlay:", err);
           if (blobUrlRef.current) {
             URL.revokeObjectURL(blobUrlRef.current);
             blobUrlRef.current = null;
           }
-          onError();
+          onError("Failed to display image overlay");
           onLoadingEnd();
         });
       } catch (error) {
         const axiosError = error as AxiosError;
         console.error("Error fetching satellite image:", axiosError);
+
+        let errorMessage = "Failed to load satellite image";
         if (
           axiosError.response?.status === 401 ||
           axiosError.response?.status === 403
         ) {
-          console.error("Authentication error - token may be expired");
+          errorMessage = "Authentication failed. Please login again.";
         } else if (axiosError.response?.status === 404) {
-          console.error("Image file not found on server");
-        } else {
-          console.error("Error response:", axiosError.response?.data);
+          errorMessage = "Image file not found on server";
+        } else if (axiosError.code === "ECONNABORTED") {
+          errorMessage = "Request timeout. Image may be too large.";
         }
+
         if (blobUrlRef.current) {
           URL.revokeObjectURL(blobUrlRef.current);
           blobUrlRef.current = null;
         }
-        onError();
+        onError(errorMessage);
         onLoadingEnd();
       }
     };
@@ -1630,7 +324,7 @@ function SatelliteImageLayer({
         blobUrlRef.current = null;
       }
     };
-  }, [bbox, image, map, onLoadingStart, onLoadingEnd, onError]);
+  }, [bbox, image, map, onLoadingStart, onLoadingEnd, onError, onSuccess]);
 
   return null;
 }
@@ -1676,7 +370,7 @@ function MapResizeHandler({
     if (resizeRef.current) {
       clearTimeout(resizeRef.current);
     }
-    resizeRef.current = setTimeout(() => {
+    resizeRef.current = window.setTimeout(() => {
       try {
         map.invalidateSize();
       } catch (error) {
@@ -1706,12 +400,15 @@ export default function Dashboard() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<string>("all");
   const [selectedImage, setSelectedImage] = useState<string>("all");
-  const [pipelineGeoJSON, setPipelineGeoJSON] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [pipelineGeoJSON, setPipelineGeoJSON] =
+    useState<GeoJSON.FeatureCollection | null>(null);
   const [isImageLoading, setIsImageLoading] = useState(false);
-  const [imageLoadingError, setImageLoadingError] = useState(false);
+  const [imageLoadingError, setImageLoadingError] = useState<string>("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isStatsVisible, setIsStatsVisible] = useState(true);
   const [isDataLoading, setIsDataLoading] = useState(true);
+  const [showAnomalies, setShowAnomalies] = useState(true);
+  const [imageLoadProgress, setImageLoadProgress] = useState(0);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -1724,9 +421,10 @@ export default function Dashboard() {
       setNotifications((prevNotifications) => {
         if (newNotifications.length > prevNotifications.length) {
           toast.info(
-            `You have ${newNotifications.length} new notification${
+            `${newNotifications.length} new notification${
               newNotifications.length !== 1 ? "s" : ""
-            }`
+            }`,
+            { autoClose: 3000 }
           );
         }
         return newNotifications;
@@ -1784,10 +482,10 @@ export default function Dashboard() {
       setNotifications(notificationsRes.data.results || notificationsRes.data);
 
       if (selectedPipeline !== "all") {
-        loadPipelineGeoJSON(selectedPipeline);
+        await loadPipelineGeoJSON(selectedPipeline);
       }
     } catch (error) {
-      toast.error("Failed to load data");
+      toast.error("Failed to load dashboard data");
       console.error(error);
     } finally {
       setIsDataLoading(false);
@@ -1797,7 +495,7 @@ export default function Dashboard() {
   useEffect(() => {
     loadData();
     loadNotifications();
-    const notificationsInterval = setInterval(loadNotifications, 10000);
+    const notificationsInterval = setInterval(loadNotifications, 30000); // Check every 30 seconds
     return () => clearInterval(notificationsInterval);
   }, [loadData, loadNotifications]);
 
@@ -1847,81 +545,52 @@ export default function Dashboard() {
   const getSeverityBadgeColor = (severity: string | null) => {
     switch (severity) {
       case "critical":
-        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+        return "destructive";
       case "high":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300";
+        return "default";
       case "medium":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300";
+        return "secondary";
       case "low":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+        return "outline";
       default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300";
+        return "outline";
     }
   };
 
-  useEffect(() => {
-    setIsImageLoading(false);
-    setImageLoadingError(false);
-
-    if (displayedImage) {
-      console.log("Displayed Image:", {
-        id: displayedImage.id,
-        name: displayedImage.name,
-        is_cog_converted: displayedImage.is_cog_converted,
-        cog_url: displayedImage.cog_url,
-        original_url: displayedImage.original_url,
-        bbox: displayedImage.bbox,
-        bbox_fields: {
-          minx: displayedImage.bbox_minx,
-          miny: displayedImage.bbox_miny,
-          maxx: displayedImage.bbox_maxx,
-          maxy: displayedImage.bbox_maxy,
-        },
-        conversion_status: displayedImage.conversion_status,
-      });
-
-      const hasBbox =
-        displayedImage.bbox ||
-        (displayedImage.bbox_minx !== null &&
-          displayedImage.bbox_miny !== null &&
-          displayedImage.bbox_maxx !== null &&
-          displayedImage.bbox_maxy !== null);
-
-      if (
-        !hasBbox &&
-        (displayedImage.is_cog_converted || displayedImage.original_tiff)
-      ) {
-        const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
-        const imageUrl = `${API_BASE_URL}/satellite-images/${displayedImage.id}/display_image/`;
-        const img = new Image();
-        img.onload = () => {
-          console.log(
-            "Image loaded, bbox should be extracted now. Refreshing data..."
-          );
-          setTimeout(() => {
-            loadData();
-          }, 1000);
-        };
-        img.onerror = (err: Event | string) => {
-          console.error("Error loading display image:", err);
-        };
-        img.src = imageUrl;
-      }
-    }
-  }, [displayedImage, loadData]);
-
   const handleImageLoadingStart = useCallback(() => {
     setIsImageLoading(true);
-    setImageLoadingError(false);
+    setImageLoadingError("");
+    setImageLoadProgress(0);
+
+    // Simulate progress
+    const interval = setInterval(() => {
+      setImageLoadProgress((prev) => {
+        if (prev >= 90) {
+          clearInterval(interval);
+          return 90;
+        }
+        return prev + 10;
+      });
+    }, 200);
   }, []);
 
   const handleImageLoadingEnd = useCallback(() => {
-    setIsImageLoading(false);
+    setImageLoadProgress(100);
+    setTimeout(() => {
+      setIsImageLoading(false);
+      setImageLoadProgress(0);
+    }, 500);
   }, []);
 
-  const handleImageError = useCallback(() => {
-    setImageLoadingError(true);
+  const handleImageError = useCallback((error: string) => {
+    setImageLoadingError(error);
     setIsImageLoading(false);
+    setImageLoadProgress(0);
+    toast.error(error, { autoClose: 5000 });
+  }, []);
+
+  const handleImageSuccess = useCallback(() => {
+    toast.success("Satellite image loaded successfully", { autoClose: 2000 });
   }, []);
 
   const criticalAnomalies = useMemo(
@@ -1933,9 +602,12 @@ export default function Dashboard() {
     [anomalies]
   );
 
+  const totalAnomaliesCount = anomalies.length;
+  const resolvedCount = anomalies.filter((a) => a.is_resolved).length;
+
   return (
     <TooltipProvider>
-      <div className="h-screen flex flex-col bg-background text-foreground">
+      <div className="h-screen flex flex-col bg-linear-to-br from-background via-background to-muted/20">
         {/* Modern Header */}
         <header className="bg-card/95 backdrop-blur-sm border-b border-border px-6 py-4 shadow-lg z-50">
           <div className="flex items-center justify-between">
@@ -2152,28 +824,32 @@ export default function Dashboard() {
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar */}
+          {/* Enhanced Sidebar */}
           {isSidebarOpen && (
-            <aside className="w-80 border-r border-border overflow-y-auto shrink-0 p-4 space-y-4 bg-card shadow-inner">
+            <aside className="w-96 border-r border-border overflow-y-auto shrink-0 p-6 space-y-6 bg-card/50 backdrop-blur-sm shadow-xl">
               {isDataLoading ? (
                 <>
-                  <Skeleton className="h-48 rounded-lg" />
-                  <Skeleton className="h-64 rounded-lg" />
-                  <Skeleton className="h-48 rounded-lg" />
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} className="h-64 rounded-xl" />
+                  ))}
                 </>
               ) : (
                 <>
-                  <Card className="shadow-sm">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
+                  {/* Filters Card */}
+                  <Card className="shadow-lg border-2 hover:border-primary/50 transition-colors">
+                    <CardHeader className="pb-4 bg-linear-to-r from-primary/5 to-transparent rounded-t-lg">
+                      <CardTitle className="text-base flex items-center gap-2 font-bold">
+                        <div className="p-2 bg-primary/10 rounded-lg">
+                          <Filter className="h-4 w-4 text-primary" />
+                        </div>
                         Filters
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
-                        <label className="text-sm font-medium mb-1 block text-foreground">
-                          Pipeline
+                        <label className="text-sm font-semibold mb-2 text-foreground flex items-center gap-2">
+                          <Gauge className="h-3 w-3" />
+                          Pipeline Selection
                         </label>
                         <Select
                           value={selectedPipeline}
@@ -2186,21 +862,37 @@ export default function Dashboard() {
                             }
                           }}
                         >
-                          <SelectTrigger className="w-full">
+                          <SelectTrigger className="w-full bg-background hover:bg-muted transition-colors">
                             <SelectValue placeholder="Select pipeline" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Pipelines</SelectItem>
+                            <SelectItem value="all">
+                              <div className="flex items-center gap-2">
+                                <Layers className="h-3 w-3" />
+                                All Pipelines
+                              </div>
+                            </SelectItem>
                             {pipelines.map((pipeline) => (
                               <SelectItem key={pipeline.id} value={pipeline.id}>
-                                {pipeline.name}
+                                <div className="flex items-center gap-2">
+                                  <Gauge className="h-3 w-3" />
+                                  {pipeline.name}
+                                </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        {selectedPipeline !== "all" && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {filteredImages.length} image
+                            {filteredImages.length !== 1 ? "s" : ""} available
+                          </p>
+                        )}
                       </div>
+                      <Separator />
                       <div>
-                        <label className="text-sm font-medium mb-1 block text-foreground">
+                        <label className="text-sm font-semibold mb-2 text-foreground flex items-center gap-2">
+                          <Satellite className="h-3 w-3" />
                           Satellite Image
                         </label>
                         <Select
@@ -2208,46 +900,106 @@ export default function Dashboard() {
                           onValueChange={(value) => {
                             setSelectedImage(value);
                             setIsImageLoading(false);
-                            setImageLoadingError(false);
+                            setImageLoadingError("");
                           }}
                         >
-                          <SelectTrigger className="w-full">
+                          <SelectTrigger className="w-full bg-background hover:bg-muted transition-colors">
                             <SelectValue placeholder="Select image" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Images</SelectItem>
+                            <SelectItem value="all">
+                              <div className="flex items-center gap-2">
+                                <Eye className="h-3 w-3" />
+                                No Image Overlay
+                              </div>
+                            </SelectItem>
                             {filteredImages.map((image) => (
                               <SelectItem key={image.id} value={image.id}>
-                                <div className="flex justify-between items-center w-full">
-                                  <span className="truncate flex-1">
-                                    {image.name}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground ml-2">
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-2">
+                                    <Satellite className="h-3 w-3" />
+                                    <span className="truncate font-medium">
+                                      {image.name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <Clock className="h-3 w-3" />
                                     {formatImageDate(image.created_at)}
-                                  </span>
+                                  </div>
                                 </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        {displayedImage && (
+                          <div className="mt-3 p-3 bg-muted/50 rounded-lg space-y-2">
+                            <p className="text-xs font-semibold">
+                              Image Details:
+                            </p>
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">
+                                  Type:
+                                </span>
+                                <Badge variant="outline" className="text-xs">
+                                  {displayedImage.image_type.toUpperCase()}
+                                </Badge>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">
+                                  Status:
+                                </span>
+                                <Badge
+                                  variant={
+                                    displayedImage.is_cog_converted
+                                      ? "default"
+                                      : "secondary"
+                                  }
+                                  className="text-xs"
+                                >
+                                  {displayedImage.is_cog_converted
+                                    ? "COG Ready"
+                                    : "Processing"}
+                                </Badge>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">
+                                  Acquired:
+                                </span>
+                                <span className="font-medium">
+                                  {formatImageDate(
+                                    displayedImage.acquisition_date
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* Analysis Results */}
-                  <Card className="shadow-sm">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4" />
+                  {/* Analysis Results Card */}
+                  <Card className="shadow-lg border-2 hover:border-primary/50 transition-colors">
+                    <CardHeader className="pb-4 bg-linear-to-r from-cyan-500/5 to-transparent rounded-t-lg">
+                      <CardTitle className="text-base flex items-center gap-2 font-bold">
+                        <div className="p-2 bg-cyan-500/10 rounded-lg">
+                          <BarChart3 className="h-4 w-4 text-cyan-500" />
+                        </div>
                         Analysis Results
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2">
+                      <div className="max-h-[450px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                         {selectedImage === "all" ? (
-                          <p className="text-sm text-muted-foreground text-center py-6">
-                            Select a satellite image to view analysis results.
-                          </p>
+                          <div className="text-center py-12">
+                            <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                              <BarChart3 className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                            <p className="text-sm text-muted-foreground font-medium">
+                              Select a satellite image to view analysis results
+                            </p>
+                          </div>
                         ) : displayedImage ? (
                           (() => {
                             const imageAnalyses =
@@ -2262,72 +1014,110 @@ export default function Dashboard() {
                                   <AccordionItem
                                     value={analysis.id}
                                     key={analysis.id}
+                                    className="border-b border-border last:border-0"
                                   >
-                                    <AccordionTrigger className="text-sm py-2">
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-medium">
-                                          {analysis.analysis_type_display}
-                                        </span>
+                                    <AccordionTrigger className="hover:no-underline py-3">
+                                      <div className="flex items-center justify-between w-full pr-4">
+                                        <div className="flex items-center gap-3">
+                                          <div className="p-2 bg-primary/10 rounded-lg">
+                                            <Activity className="h-4 w-4 text-primary" />
+                                          </div>
+                                          <div className="text-left">
+                                            <p className="font-semibold text-sm">
+                                              {analysis.analysis_type_display}
+                                            </p>
+                                            {analysis.confidence_score !==
+                                              null && (
+                                              <p className="text-xs text-muted-foreground">
+                                                Confidence:{" "}
+                                                {(
+                                                  analysis.confidence_score *
+                                                  100
+                                                ).toFixed(1)}
+                                                %
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
                                         {analysis.severity && (
-                                          <span
-                                            className={`px-1.5 py-0.5 rounded text-xs ${getSeverityBadgeColor(
+                                          <Badge
+                                            variant={getSeverityBadgeColor(
                                               analysis.severity
-                                            )}`}
+                                            )}
+                                            className="ml-2"
                                           >
                                             {analysis.severity_display}
-                                          </span>
+                                          </Badge>
                                         )}
                                       </div>
                                     </AccordionTrigger>
-                                    <AccordionContent className="space-y-2 text-xs">
-                                      <div className="grid grid-cols-2 gap-2">
+                                    <AccordionContent className="space-y-3 pt-2 pb-4">
+                                      <div className="grid grid-cols-2 gap-3">
                                         {analysis.confidence_score !== null && (
-                                          <div className="flex items-center gap-1 text-muted-foreground">
-                                            <TrendingUp className="h-3 w-3" />
-                                            <span>
-                                              Confidence:{" "}
-                                              {(
-                                                analysis.confidence_score * 100
-                                              ).toFixed(1)}
-                                              %
-                                            </span>
+                                          <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+                                            <TrendingUp className="h-4 w-4 text-green-500" />
+                                            <div className="flex flex-col">
+                                              <span className="text-xs text-muted-foreground">
+                                                Confidence
+                                              </span>
+                                              <span className="text-sm font-bold">
+                                                {(
+                                                  analysis.confidence_score *
+                                                  100
+                                                ).toFixed(1)}
+                                                %
+                                              </span>
+                                            </div>
                                           </div>
                                         )}
                                         {analysis.processing_time_seconds !==
                                           null && (
-                                          <div className="flex items-center gap-1 text-muted-foreground">
-                                            <Clock className="h-3 w-3" />
-                                            <span>
-                                              {analysis.processing_time_seconds.toFixed(
-                                                1
-                                              )}
-                                              s
-                                            </span>
+                                          <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+                                            <Clock className="h-4 w-4 text-blue-500" />
+                                            <div className="flex flex-col">
+                                              <span className="text-xs text-muted-foreground">
+                                                Time
+                                              </span>
+                                              <span className="text-sm font-bold">
+                                                {analysis.processing_time_seconds.toFixed(
+                                                  1
+                                                )}
+                                                s
+                                              </span>
+                                            </div>
                                           </div>
                                         )}
                                         {analysis.anomalies_count > 0 && (
-                                          <div className="flex items-center gap-1 text-muted-foreground col-span-2">
-                                            <AlertTriangle className="h-3 w-3 text-orange-500" />
-                                            <span>
-                                              {analysis.anomalies_count} anomal
-                                              {analysis.anomalies_count !== 1
-                                                ? "ies"
-                                                : "y"}{" "}
-                                              detected
-                                            </span>
+                                          <div className="flex items-center gap-2 p-2 bg-orange-500/10 rounded-lg col-span-2">
+                                            <AlertTriangle className="h-4 w-4 text-orange-500" />
+                                            <div className="flex flex-col">
+                                              <span className="text-xs text-muted-foreground">
+                                                Anomalies
+                                              </span>
+                                              <span className="text-sm font-bold text-orange-600">
+                                                {analysis.anomalies_count}{" "}
+                                                detected
+                                              </span>
+                                            </div>
                                           </div>
                                         )}
                                       </div>
                                       {Object.keys(analysis.results_json || {})
                                         .length > 0 && (
-                                        <div className="mt-2 p-2 bg-muted rounded text-xs font-mono overflow-x-auto">
-                                          <pre className="whitespace-pre-wrap wrap-break-words">
-                                            {JSON.stringify(
-                                              analysis.results_json,
-                                              null,
-                                              2
-                                            )}
-                                          </pre>
+                                        <div className="mt-3">
+                                          <p className="text-xs font-semibold mb-2 flex items-center gap-2">
+                                            <FileText className="h-3 w-3" />
+                                            Analysis Metadata
+                                          </p>
+                                          <div className="p-3 bg-muted rounded-lg text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto custom-scrollbar">
+                                            <pre className="whitespace-pre-wrap wrap-break-words">
+                                              {JSON.stringify(
+                                                analysis.results_json,
+                                                null,
+                                                2
+                                              )}
+                                            </pre>
+                                          </div>
                                         </div>
                                       )}
                                     </AccordionContent>
@@ -2335,76 +1125,152 @@ export default function Dashboard() {
                                 ))}
                               </Accordion>
                             ) : (
-                              <p className="text-sm text-muted-foreground text-center py-6">
-                                No analysis results. Run analysis to view
-                                details.
-                              </p>
+                              <div className="text-center py-12">
+                                <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                                  <AlertCircle className="h-8 w-8 text-muted-foreground" />
+                                </div>
+                                <p className="text-sm text-muted-foreground font-medium mb-2">
+                                  No analysis results available
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Run analysis to view detailed results
+                                </p>
+                              </div>
                             );
                           })()
                         ) : (
-                          <p className="text-sm text-muted-foreground text-center py-6">
-                            Selected image not found.
-                          </p>
+                          <div className="text-center py-12">
+                            <div className="mx-auto w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+                              <XCircle className="h-8 w-8 text-destructive" />
+                            </div>
+                            <p className="text-sm text-muted-foreground font-medium">
+                              Selected image not found
+                            </p>
+                          </div>
                         )}
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* Anomalies List */}
-                  <Card className="shadow-sm">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <AlertCircle className="h-4 w-4" />
-                        Recent Anomalies
-                      </CardTitle>
+                  {/* Anomalies List Card */}
+                  <Card className="shadow-lg border-2 hover:border-primary/50 transition-colors">
+                    <CardHeader className="pb-4 bg-linear-to-r from-red-500/5 to-transparent rounded-t-lg">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base flex items-center gap-2 font-bold">
+                          <div className="p-2 bg-red-500/10 rounded-lg">
+                            <AlertCircle className="h-4 w-4 text-red-500" />
+                          </div>
+                          Recent Anomalies
+                        </CardTitle>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowAnomalies(!showAnomalies)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {showAnomalies ? (
+                            <Eye className="h-4 w-4" />
+                          ) : (
+                            <EyeOff className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge variant="destructive" className="text-xs">
+                          {totalAnomaliesCount} Total
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {resolvedCount} Resolved
+                        </Badge>
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                        {anomalies.slice(0, 10).map((anomaly) => (
-                          <Tooltip key={anomaly.id}>
-                            <TooltipTrigger asChild>
-                              <div
-                                className={`p-2 rounded-md border cursor-pointer hover:bg-muted/50 transition-colors ${
-                                  anomaly.severity === "critical"
-                                    ? "border-red-200 bg-red-50 dark:bg-red-900/20"
-                                    : anomaly.severity === "high"
-                                    ? "border-orange-200 bg-orange-50 dark:bg-orange-900/20"
-                                    : "border-border bg-muted"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between text-xs">
-                                  <div className="flex-1">
-                                    <p className="font-medium">
-                                      {anomaly.anomaly_type_display}
-                                    </p>
-                                    <p className="text-muted-foreground">
-                                      {anomaly.severity_display}
-                                    </p>
+                      <div className="space-y-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                        {anomalies.length > 0 ? (
+                          anomalies.slice(0, 15).map((anomaly) => (
+                            <Tooltip key={anomaly.id}>
+                              <TooltipTrigger asChild>
+                                <div
+                                  className={`p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 hover:shadow-md ${
+                                    anomaly.severity === "critical"
+                                      ? "border-red-200 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-800 dark:hover:bg-red-900/30"
+                                      : anomaly.severity === "high"
+                                      ? "border-orange-200 bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:border-orange-800 dark:hover:bg-orange-900/30"
+                                      : "border-border bg-muted/50 hover:bg-muted"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <MapPin className="h-3 w-3 shrink-0" />
+                                        <p className="font-semibold text-sm truncate">
+                                          {anomaly.anomaly_type_display}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <Badge
+                                          variant={getSeverityBadgeColor(
+                                            anomaly.severity
+                                          )}
+                                          className="text-xs"
+                                        >
+                                          {anomaly.severity_display}
+                                        </Badge>
+                                        <span className="text-xs text-muted-foreground">
+                                          {(
+                                            anomaly.confidence_score * 100
+                                          ).toFixed(0)}
+                                          % confidence
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="shrink-0 ml-2">
+                                      {anomaly.is_resolved ? (
+                                        <CheckCircle className="h-5 w-5 text-green-500" />
+                                      ) : (
+                                        <XCircle className="h-5 w-5 text-red-500" />
+                                      )}
+                                    </div>
                                   </div>
-                                  {anomaly.is_resolved ? (
-                                    <CheckCircle className="h-3 w-3 text-green-500" />
-                                  ) : (
-                                    <XCircle className="h-3 w-3 text-red-500" />
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-xs">
+                                <div className="space-y-1">
+                                  <p className="font-semibold">
+                                    {anomaly.anomaly_type_display}
+                                  </p>
+                                  <p className="text-xs">
+                                    Confidence:{" "}
+                                    {(anomaly.confidence_score * 100).toFixed(
+                                      1
+                                    )}
+                                    %
+                                  </p>
+                                  <p className="text-xs">
+                                    Location: {anomaly.location_lat.toFixed(4)},{" "}
+                                    {anomaly.location_lon.toFixed(4)}
+                                  </p>
+                                  {anomaly.description && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {anomaly.description}
+                                    </p>
                                   )}
                                 </div>
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                Confidence:{" "}
-                                {(anomaly.confidence_score * 100).toFixed(1)}%
-                              </p>
-                              <p>
-                                Location: {anomaly.location_lat.toFixed(4)},{" "}
-                                {anomaly.location_lon.toFixed(4)}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        ))}
-                        {anomalies.length === 0 && (
-                          <p className="text-sm text-muted-foreground text-center py-4">
-                            No anomalies detected
-                          </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ))
+                        ) : (
+                          <div className="text-center py-12">
+                            <div className="mx-auto w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mb-4">
+                              <CheckCircle className="h-8 w-8 text-green-500" />
+                            </div>
+                            <p className="text-sm text-muted-foreground font-medium">
+                              No anomalies detected
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              All systems normal
+                            </p>
+                          </div>
                         )}
                       </div>
                     </CardContent>
@@ -2415,51 +1281,146 @@ export default function Dashboard() {
           )}
 
           {/* Map Container */}
-          <main className="flex-1 relative overflow-hidden">
+          <main className="flex-1 relative overflow-hidden bg-muted/20">
+            {/* Image Loading Indicator */}
             {isImageLoading && (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-1000 bg-card border border-border rounded-lg shadow-lg px-4 py-2 flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <span className="text-sm font-medium">
-                  Loading satellite image...
-                </span>
+              <div className="absolute top-6 left-1/2 -translate-x-1/2 z-1001 bg-card/95 backdrop-blur-md border-2 border-primary/50 rounded-xl shadow-2xl px-6 py-4 min-w-[320px]">
+                <div className="flex items-center gap-3 mb-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="text-sm font-semibold">
+                    Loading Satellite Image
+                  </span>
+                </div>
+                <Progress value={imageLoadProgress} className="h-2" />
+                <p className="text-xs text-muted-foreground mt-2">
+                  {imageLoadProgress < 30
+                    ? "Fetching image data..."
+                    : imageLoadProgress < 60
+                    ? "Processing..."
+                    : imageLoadProgress < 90
+                    ? "Rendering overlay..."
+                    : "Almost done..."}
+                </p>
               </div>
             )}
+
+            {/* Image Loading Error */}
             {imageLoadingError && !isImageLoading && (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-1000 bg-destructive/10 border border-destructive rounded-lg shadow-lg px-4 py-2 flex items-center gap-2 text-destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <span className="text-sm font-medium">
-                  Failed to load image. Try again.
-                </span>
+              <div className="absolute top-6 left-1/2 -translate-x-1/2 z-1001 bg-destructive/10 backdrop-blur-md border-2 border-destructive rounded-xl shadow-2xl px-6 py-4 min-w-[320px]">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-destructive/20 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-destructive mb-1">
+                      Image Loading Failed
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {imageLoadingError}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setImageLoadingError("");
+                      if (displayedImage) {
+                        setSelectedImage("all");
+                        setTimeout(
+                          () => setSelectedImage(displayedImage.id),
+                          100
+                        );
+                      }
+                    }}
+                    className="shrink-0"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
+
+            {/* Map Controls Overlay */}
+            <div className="absolute top-6 right-6 z-1000 flex flex-col gap-2">
+              <Card className="shadow-lg bg-card/95 backdrop-blur-sm">
+                <CardContent className="p-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={showAnomalies ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setShowAnomalies(!showAnomalies)}
+                        className="w-full justify-start gap-2"
+                      >
+                        {showAnomalies ? (
+                          <Eye className="h-4 w-4" />
+                        ) : (
+                          <EyeOff className="h-4 w-4" />
+                        )}
+                        <span className="text-xs">
+                          {showAnomalies ? "Hide" : "Show"} Anomalies
+                        </span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Toggle anomaly markers</TooltipContent>
+                  </Tooltip>
+                </CardContent>
+              </Card>
+              {displayedImage && (
+                <Card className="shadow-lg bg-card/95 backdrop-blur-sm">
+                  <CardContent className="p-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Satellite className="h-4 w-4 text-primary" />
+                        <span className="text-xs font-semibold truncate max-w-[150px]">
+                          {displayedImage.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {formatImageDate(displayedImage.acquisition_date)}
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="w-full justify-center text-xs"
+                      >
+                        {displayedImage.image_type.toUpperCase()}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Leaflet Map */}
             <MapContainer
               center={[20, 0] as LatLngTuple}
               zoom={2}
               style={{ height: "100%", width: "100%" }}
               zoomControl={true}
-              className="transition-all"
+              className="z-0"
             >
               <MapBoundsUpdater geojson={pipelineGeoJSON} />
               <MapResizeHandler
                 isSidebarOpen={isSidebarOpen}
                 isStatsVisible={isStatsVisible}
               />
-              <LayersControl position="topright">
+              <LayersControl position="bottomright">
                 <LayersControl.BaseLayer checked name="OpenStreetMap">
                   <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
                 </LayersControl.BaseLayer>
-                <LayersControl.BaseLayer name="Satellite">
+                <LayersControl.BaseLayer name="Satellite View">
                   <TileLayer
-                    attribution='&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.mapbox.com/about/maps/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    attribution="&copy; Esri"
                     url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                   />
                 </LayersControl.BaseLayer>
                 <LayersControl.BaseLayer name="Terrain">
                   <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://www.openstreetmap.org/copyright">OpenTopoMap</a>'
+                    attribution="&copy; OpenTopoMap"
                     url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
                   />
                 </LayersControl.BaseLayer>
@@ -2471,22 +1432,28 @@ export default function Dashboard() {
                       data={pipelineGeoJSON}
                       style={{
                         color: "#3b82f6",
-                        weight: 3,
+                        weight: 4,
                         opacity: 0.8,
+                        dashArray: "10, 5",
                       }}
                       onEachFeature={(
                         feature: GeoJSON.Feature,
                         layer: L.Layer
                       ) => {
                         if (feature.properties) {
-                          const popupContent = Object.keys(feature.properties)
-                            .map(
-                              (key) =>
-                                `<strong>${key}:</strong> ${String(
-                                  feature.properties?.[key] ?? ""
-                                )}`
-                            )
-                            .join("<br>");
+                          const popupContent = `
+                            <div class="p-2">
+                              <p class="font-bold mb-2 text-blue-600">Pipeline Information</p>
+                              ${Object.keys(feature.properties)
+                                .map(
+                                  (key) =>
+                                    `<div class="text-sm"><strong>${key}:</strong> ${String(
+                                      feature.properties?.[key] ?? ""
+                                    )}</div>`
+                                )
+                                .join("")}
+                            </div>
+                          `;
                           layer.bindPopup(popupContent);
                         }
                       }}
@@ -2502,56 +1469,133 @@ export default function Dashboard() {
                       displayedImage.bbox_miny !== null &&
                       displayedImage.bbox_maxx !== null &&
                       displayedImage.bbox_maxy !== null)) && (
-                    <LayersControl.Overlay checked name={displayedImage.name}>
+                    <LayersControl.Overlay
+                      checked
+                      name={`SAR: ${displayedImage.name}`}
+                    >
                       <SatelliteImageLayer
                         image={displayedImage}
                         onLoadingStart={handleImageLoadingStart}
                         onLoadingEnd={handleImageLoadingEnd}
                         onError={handleImageError}
+                        onSuccess={handleImageSuccess}
                       />
                     </LayersControl.Overlay>
                   )}
 
-                {anomalies.length > 0 && (
-                  <LayersControl.Overlay checked name="Anomalies">
-                    {anomalies.map((anomaly) => {
-                      const iconUrl =
-                        anomaly.severity === "critical"
-                          ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
-                          : anomaly.severity === "high"
-                          ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png"
-                          : "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png";
+                {showAnomalies && anomalies.length > 0 && (
+                  <LayersControl.Overlay checked name="Detected Anomalies">
+                    <>
+                      {anomalies.map((anomaly) => {
+                        const iconUrl =
+                          anomaly.severity === "critical"
+                            ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+                            : anomaly.severity === "high"
+                            ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png"
+                            : anomaly.severity === "medium"
+                            ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png"
+                            : "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png";
 
-                      const customIcon = new Icon({
-                        iconUrl,
-                        iconSize: [25, 41],
-                        iconAnchor: [12, 41],
-                      });
+                        const customIcon = new Icon({
+                          iconUrl,
+                          iconSize: [25, 41],
+                          iconAnchor: [12, 41],
+                          popupAnchor: [1, -34],
+                          shadowUrl:
+                            "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+                          shadowSize: [41, 41],
+                        });
 
-                      const position: LatLngTuple = [
-                        anomaly.location_lat,
-                        anomaly.location_lon,
-                      ];
+                        const position: LatLngTuple = [
+                          anomaly.location_lat,
+                          anomaly.location_lon,
+                        ];
 
-                      return (
-                        <Marker
-                          key={anomaly.id}
-                          position={position}
-                          icon={customIcon}
-                        >
-                          <Popup>
-                            <div className="text-sm">
-                              <strong>{anomaly.anomaly_type_display}</strong>
-                              <br />
-                              Severity: {anomaly.severity_display}
-                              <br />
-                              Confidence:{" "}
-                              {(anomaly.confidence_score * 100).toFixed(1)}%
-                            </div>
-                          </Popup>
-                        </Marker>
-                      );
-                    })}
+                        return (
+                          <Marker
+                            key={anomaly.id}
+                            position={position}
+                            icon={customIcon}
+                          >
+                            <Popup>
+                              <div className="p-2 min-w-[200px]">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <AlertTriangle className="h-4 w-4 text-orange-500" />
+                                  <strong className="text-sm">
+                                    {anomaly.anomaly_type_display}
+                                  </strong>
+                                </div>
+                                <div className="space-y-1 text-xs">
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground">
+                                      Severity:
+                                    </span>
+                                    <span className="font-semibold">
+                                      {anomaly.severity_display}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground">
+                                      Confidence:
+                                    </span>
+                                    <span className="font-semibold">
+                                      {(anomaly.confidence_score * 100).toFixed(
+                                        1
+                                      )}
+                                      %
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground">
+                                      Status:
+                                    </span>
+                                    <span
+                                      className={
+                                        anomaly.is_resolved
+                                          ? "text-green-600"
+                                          : "text-red-600"
+                                      }
+                                    >
+                                      {anomaly.is_resolved
+                                        ? "Resolved"
+                                        : "Active"}
+                                    </span>
+                                  </div>
+                                  {anomaly.area_m2 && (
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">
+                                        Area:
+                                      </span>
+                                      <span className="font-semibold">
+                                        {anomaly.area_m2.toFixed(1)} m²
+                                      </span>
+                                    </div>
+                                  )}
+                                  {anomaly.description && (
+                                    <div className="mt-2 pt-2 border-t">
+                                      <p className="text-muted-foreground">
+                                        Description:
+                                      </p>
+                                      <p className="mt-1">
+                                        {anomaly.description}
+                                      </p>
+                                    </div>
+                                  )}
+                                  <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
+                                    <p>
+                                      Lat: {anomaly.location_lat.toFixed(6)}
+                                    </p>
+                                    <p>
+                                      Lon: {anomaly.location_lon.toFixed(6)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        );
+                      })}
+                    </>
                   </LayersControl.Overlay>
                 )}
               </LayersControl>
@@ -2559,6 +1603,53 @@ export default function Dashboard() {
           </main>
         </div>
       </div>
+
+      {/* Custom Scrollbar Styles */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: hsl(var(--muted));
+          border-radius: 3px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: hsl(var(--primary) / 0.5);
+          border-radius: 3px;
+          transition: background 0.2s;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: hsl(var(--primary) / 0.7);
+        }
+        
+        .satellite-image-overlay {
+          transition: opacity 0.3s ease-in-out;
+        }
+        
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        .leaflet-popup-content-wrapper {
+          border-radius: 8px;
+          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        
+        .leaflet-popup-tip {
+          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+      `}</style>
     </TooltipProvider>
   );
 }
