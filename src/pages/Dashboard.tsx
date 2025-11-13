@@ -627,7 +627,7 @@ export default function Dashboard() {
                   PF-FlowSafe
                 </h1>
                 <p className="text-xs text-muted-foreground font-medium">
-                  SAR Pipeline Monitoring • {user?.username}
+                  Pipeline Monitoring • {user?.username}
                 </p>
               </div>
             </div>
