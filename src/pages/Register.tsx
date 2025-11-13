@@ -78,7 +78,7 @@ export default function Register() {
       <div className="absolute top-4 right-4 z-20">
         <ThemeToggle />
       </div>
-      <Card className="w-full max-w-md shadow-lg">
+      <Card className="w-full max-w-md shadow-xl rounded-2xl">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-foreground">
             Create Account
