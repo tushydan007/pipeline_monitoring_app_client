@@ -23,7 +23,8 @@ import {
   type SatelliteImage,
   type Anomaly,
   type Notification,
-  type Analysis,
+  type EnhancedAnalysis,
+  type LegendData,
 } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,8 +50,6 @@ import {
   PanelLeftOpen,
   BarChart3,
   Minimize2,
-  FileText,
-  TrendingUp,
   Clock,
   AlertCircle,
   Radar,
@@ -73,15 +72,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { AnalysisCard } from "@/components/AnalysisCard";
+import { MapLegend } from "@/components/MapLegend";
 
 // Fix for default marker icons in react-leaflet
 delete (Icon.Default.prototype as { _getIconUrl?: () => string })._getIconUrl;
@@ -247,7 +242,7 @@ function SatelliteImageLayer({
         const imageResponse = await axios.get(imageUrl, {
           responseType: "blob",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
-          timeout: 30000, // 30 second timeout
+          timeout: 30000,
         });
 
         const blob = imageResponse.data;
@@ -396,7 +391,7 @@ export default function Dashboard() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [satelliteImages, setSatelliteImages] = useState<SatelliteImage[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
-  const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [analyses, setAnalyses] = useState<EnhancedAnalysis[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<string>("all");
   const [selectedImage, setSelectedImage] = useState<string>("all");
@@ -475,10 +470,12 @@ export default function Dashboard() {
       setPipelines(pipelinesRes.data.results || pipelinesRes.data);
       setSatelliteImages(imagesRes.data.results || imagesRes.data);
       setAnomalies(anomaliesRes.data.results || anomaliesRes.data);
+
       const completedAnalyses = (
         analysesRes.data.results || analysesRes.data
-      ).filter((a: Analysis) => a.status === "completed");
+      ).filter((a: EnhancedAnalysis) => a.status === "completed");
       setAnalyses(completedAnalyses);
+
       setNotifications(notificationsRes.data.results || notificationsRes.data);
 
       if (selectedPipeline !== "all") {
@@ -495,7 +492,7 @@ export default function Dashboard() {
   useEffect(() => {
     loadData();
     loadNotifications();
-    const notificationsInterval = setInterval(loadNotifications, 30000); // Check every 30 seconds
+    const notificationsInterval = setInterval(loadNotifications, 30000);
     return () => clearInterval(notificationsInterval);
   }, [loadData, loadNotifications]);
 
@@ -531,14 +528,20 @@ export default function Dashboard() {
 
   const analysesByImage = useMemo(
     () =>
-      analyses.reduce((acc: Record<string, Analysis[]>, analysis: Analysis) => {
-        const imageId = analysis.satellite_image;
-        if (!acc[imageId]) {
-          acc[imageId] = [];
-        }
-        acc[imageId].push(analysis);
-        return acc;
-      }, {}),
+      analyses.reduce(
+        (
+          acc: Record<string, EnhancedAnalysis[]>,
+          analysis: EnhancedAnalysis
+        ) => {
+          const imageId = analysis.satellite_image;
+          if (!acc[imageId]) {
+            acc[imageId] = [];
+          }
+          acc[imageId].push(analysis);
+          return acc;
+        },
+        {}
+      ),
     [analyses]
   );
 
@@ -562,7 +565,6 @@ export default function Dashboard() {
     setImageLoadingError("");
     setImageLoadProgress(0);
 
-    // Simulate progress
     const interval = setInterval(() => {
       setImageLoadProgress((prev) => {
         if (prev >= 90) {
@@ -605,6 +607,45 @@ export default function Dashboard() {
   const totalAnomaliesCount = anomalies.length;
   const resolvedCount = anomalies.filter((a) => a.is_resolved).length;
 
+  // Collect all unique legends from analyses
+  const allLegends = useMemo(() => {
+    const legendsMap = new Map<string, LegendData>();
+
+    if (displayedImage) {
+      const imageAnalyses = analysesByImage[displayedImage.id] || [];
+      imageAnalyses.forEach((analysis) => {
+        if (analysis.analysis_summary?.legends) {
+          analysis.analysis_summary.legends.forEach((legend) => {
+            const key = `${legend.name}-${legend.color}`;
+            if (!legendsMap.has(key)) {
+              legendsMap.set(key, legend);
+            }
+          });
+        }
+      });
+
+      // Also add legends from mapped objects
+      if (displayedImage.mapped_objects_data) {
+        displayedImage.mapped_objects_data.forEach((obj) => {
+          if (obj.legend_category_data) {
+            const legend: LegendData = {
+              name: obj.legend_category_data.name,
+              color: obj.legend_category_data.color,
+              icon: obj.legend_category_data.icon,
+              type: obj.legend_category_data.category_type,
+            };
+            const key = `${legend.name}-${legend.color}`;
+            if (!legendsMap.has(key)) {
+              legendsMap.set(key, legend);
+            }
+          }
+        });
+      }
+    }
+
+    return Array.from(legendsMap.values());
+  }, [displayedImage, analysesByImage]);
+
   return (
     <TooltipProvider>
       <div className="h-screen flex flex-col bg-linear-to-br from-background via-background to-muted/20">
@@ -612,7 +653,6 @@ export default function Dashboard() {
         <header className="bg-card/95 backdrop-blur-sm border-b border-border px-6 py-4 shadow-lg z-50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              {/* Modern Logo */}
               <div className="relative group">
                 <div className="absolute inset-0 bg-linear-to-br from-blue-600 to-cyan-600 rounded-xl blur-md opacity-75 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative bg-linear-to-br from-blue-600 to-cyan-600 rounded-xl p-3 shadow-xl border-2 border-blue-400/50">
@@ -853,7 +893,7 @@ export default function Dashboard() {
                         </label>
                         <Select
                           value={selectedPipeline}
-                          onValueChange={(value) => {
+                          onValueChange={(value: string) => {
                             setSelectedPipeline(value);
                             if (value !== "all") {
                               loadPipelineGeoJSON(value);
@@ -872,7 +912,7 @@ export default function Dashboard() {
                                 All Pipelines
                               </div>
                             </SelectItem>
-                            {pipelines.map((pipeline) => (
+                            {pipelines.map((pipeline: Pipeline) => (
                               <SelectItem key={pipeline.id} value={pipeline.id}>
                                 <div className="flex items-center gap-2">
                                   <Gauge className="h-3 w-3" />
@@ -897,7 +937,7 @@ export default function Dashboard() {
                         </label>
                         <Select
                           value={selectedImage}
-                          onValueChange={(value) => {
+                          onValueChange={(value: string) => {
                             setSelectedImage(value);
                             setIsImageLoading(false);
                             setImageLoadingError("");
@@ -913,7 +953,7 @@ export default function Dashboard() {
                                 No Image Overlay
                               </div>
                             </SelectItem>
-                            {filteredImages.map((image) => (
+                            {filteredImages.map((image: SatelliteImage) => (
                               <SelectItem key={image.id} value={image.id}>
                                 <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-2">
@@ -1005,125 +1045,16 @@ export default function Dashboard() {
                             const imageAnalyses =
                               analysesByImage[selectedImage] || [];
                             return imageAnalyses.length > 0 ? (
-                              <Accordion
-                                type="single"
-                                collapsible
-                                className="w-full"
-                              >
-                                {imageAnalyses.map((analysis) => (
-                                  <AccordionItem
-                                    value={analysis.id}
-                                    key={analysis.id}
-                                    className="border-b border-border last:border-0"
-                                  >
-                                    <AccordionTrigger className="hover:no-underline py-3">
-                                      <div className="flex items-center justify-between w-full pr-4">
-                                        <div className="flex items-center gap-3">
-                                          <div className="p-2 bg-primary/10 rounded-lg">
-                                            <Activity className="h-4 w-4 text-primary" />
-                                          </div>
-                                          <div className="text-left">
-                                            <p className="font-semibold text-sm">
-                                              {analysis.analysis_type_display}
-                                            </p>
-                                            {analysis.confidence_score !==
-                                              null && (
-                                              <p className="text-xs text-muted-foreground">
-                                                Confidence:{" "}
-                                                {(
-                                                  analysis.confidence_score *
-                                                  100
-                                                ).toFixed(1)}
-                                                %
-                                              </p>
-                                            )}
-                                          </div>
-                                        </div>
-                                        {analysis.severity && (
-                                          <Badge
-                                            variant={getSeverityBadgeColor(
-                                              analysis.severity
-                                            )}
-                                            className="ml-2"
-                                          >
-                                            {analysis.severity_display}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="space-y-3 pt-2 pb-4">
-                                      <div className="grid grid-cols-2 gap-3">
-                                        {analysis.confidence_score !== null && (
-                                          <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
-                                            <TrendingUp className="h-4 w-4 text-green-500" />
-                                            <div className="flex flex-col">
-                                              <span className="text-xs text-muted-foreground">
-                                                Confidence
-                                              </span>
-                                              <span className="text-sm font-bold">
-                                                {(
-                                                  analysis.confidence_score *
-                                                  100
-                                                ).toFixed(1)}
-                                                %
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
-                                        {analysis.processing_time_seconds !==
-                                          null && (
-                                          <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
-                                            <Clock className="h-4 w-4 text-blue-500" />
-                                            <div className="flex flex-col">
-                                              <span className="text-xs text-muted-foreground">
-                                                Time
-                                              </span>
-                                              <span className="text-sm font-bold">
-                                                {analysis.processing_time_seconds.toFixed(
-                                                  1
-                                                )}
-                                                s
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
-                                        {analysis.anomalies_count > 0 && (
-                                          <div className="flex items-center gap-2 p-2 bg-orange-500/10 rounded-lg col-span-2">
-                                            <AlertTriangle className="h-4 w-4 text-orange-500" />
-                                            <div className="flex flex-col">
-                                              <span className="text-xs text-muted-foreground">
-                                                Anomalies
-                                              </span>
-                                              <span className="text-sm font-bold text-orange-600">
-                                                {analysis.anomalies_count}{" "}
-                                                detected
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                      {Object.keys(analysis.results_json || {})
-                                        .length > 0 && (
-                                        <div className="mt-3">
-                                          <p className="text-xs font-semibold mb-2 flex items-center gap-2">
-                                            <FileText className="h-3 w-3" />
-                                            Analysis Metadata
-                                          </p>
-                                          <div className="p-3 bg-muted rounded-lg text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto custom-scrollbar">
-                                            <pre className="whitespace-pre-wrap wrap-break-words">
-                                              {JSON.stringify(
-                                                analysis.results_json,
-                                                null,
-                                                2
-                                              )}
-                                            </pre>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </AccordionContent>
-                                  </AccordionItem>
-                                ))}
-                              </Accordion>
+                              <div className="space-y-3">
+                                {imageAnalyses.map(
+                                  (analysis: EnhancedAnalysis) => (
+                                    <AnalysisCard
+                                      key={analysis.id}
+                                      analysis={analysis}
+                                    />
+                                  )
+                                )}
+                              </div>
                             ) : (
                               <div className="text-center py-12">
                                 <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
@@ -1187,7 +1118,7 @@ export default function Dashboard() {
                     <CardContent>
                       <div className="space-y-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
                         {anomalies.length > 0 ? (
-                          anomalies.slice(0, 15).map((anomaly) => (
+                          anomalies.slice(0, 15).map((anomaly: Anomaly) => (
                             <Tooltip key={anomaly.id}>
                               <TooltipTrigger asChild>
                                 <div
@@ -1342,7 +1273,7 @@ export default function Dashboard() {
 
             {/* Map Controls Overlay */}
             <div className="absolute top-6 right-6 z-1000 flex flex-col gap-2">
-              <Card className="shadow-lg bg-card/95 backdrop-blur-sm">
+              {/* <Card className="shadow-lg bg-card/95 backdrop-blur-sm">
                 <CardContent className="p-2">
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1365,7 +1296,7 @@ export default function Dashboard() {
                     <TooltipContent>Toggle anomaly markers</TooltipContent>
                   </Tooltip>
                 </CardContent>
-              </Card>
+              </Card> */}
               {displayedImage && (
                 <Card className="shadow-lg bg-card/95 backdrop-blur-sm">
                   <CardContent className="p-3">
@@ -1391,6 +1322,9 @@ export default function Dashboard() {
                 </Card>
               )}
             </div>
+
+            {/* Map Legend */}
+            <MapLegend legends={allLegends} />
 
             {/* Leaflet Map */}
             <MapContainer
@@ -1446,7 +1380,7 @@ export default function Dashboard() {
                               <p class="font-bold mb-2 text-blue-600">Pipeline Information</p>
                               ${Object.keys(feature.properties)
                                 .map(
-                                  (key) =>
+                                  (key: string) =>
                                     `<div class="text-sm"><strong>${key}:</strong> ${String(
                                       feature.properties?.[key] ?? ""
                                     )}</div>`
@@ -1483,10 +1417,67 @@ export default function Dashboard() {
                     </LayersControl.Overlay>
                   )}
 
+                {/* Mapped Objects Layer */}
+                {displayedImage &&
+                  displayedImage.mapped_objects_data &&
+                  displayedImage.mapped_objects_data.length > 0 && (
+                    <LayersControl.Overlay checked name="Mapped Objects">
+                      <>
+                        {displayedImage.mapped_objects_data.map(
+                          (obj) =>
+                            obj.geojson_data && (
+                              <GeoJSON
+                                key={obj.id}
+                                data={obj.geojson_data}
+                                style={{
+                                  color:
+                                    obj.legend_category_data?.color ||
+                                    "#FF0000",
+                                  weight: 2,
+                                  opacity: 0.8,
+                                  fillOpacity: 0.4,
+                                }}
+                                onEachFeature={(
+                                  feature: GeoJSON.Feature,
+                                  layer: L.Layer
+                                ) => {
+                                  layer.bindPopup(`
+                                <div class="p-2">
+                                  <h3 class="font-bold">${obj.name}</h3>
+                                  <p class="text-sm">${
+                                    obj.object_type_display
+                                  }</p>
+                                  ${
+                                    obj.area_m2
+                                      ? `<p class="text-xs">Area: ${obj.area_m2.toFixed(
+                                          2
+                                        )} m²</p>`
+                                      : ""
+                                  }
+                                  ${
+                                    obj.legend_category_data
+                                      ? `
+                                    <div class="flex items-center gap-2 mt-2">
+                                      <div style="width: 12px; height: 12px; background-color: ${obj.legend_category_data.color}; border-radius: 50%;"></div>
+                                      <span class="text-xs">${obj.legend_category_data.name}</span>
+                                    </div>
+                                  `
+                                      : ""
+                                  }
+                                </div>
+                              `);
+                                }}
+                              />
+                            )
+                        )}
+                      </>
+                    </LayersControl.Overlay>
+                  )}
+
                 {showAnomalies && anomalies.length > 0 && (
                   <LayersControl.Overlay checked name="Detected Anomalies">
                     <>
-                      {anomalies.map((anomaly) => {
+                      {anomalies.map((anomaly: Anomaly) => {
                         const iconUrl =
                           anomaly.severity === "critical"
                             ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
