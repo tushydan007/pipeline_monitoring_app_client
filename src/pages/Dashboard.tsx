@@ -1438,7 +1438,7 @@ export default function Dashboard() {
                                   fillOpacity: 0.4,
                                 }}
                                 onEachFeature={(
-                                  feature: GeoJSON.Feature,
+                                  _feature: GeoJSON.Feature,
                                   layer: L.Layer
                                 ) => {
                                   layer.bindPopup(`
