@@ -16,15 +16,13 @@ import {
   satelliteImageApi,
   anomalyApi,
   notificationApi,
-  analysisApi,
 } from "@/lib/api";
 import {
   type Pipeline,
   type SatelliteImage,
   type Anomaly,
   type Notification,
-  type EnhancedAnalysis,
-  type LegendData,
+  // type GroupedAnalysisResults,
 } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -75,7 +73,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { AnalysisCard } from "@/components/AnalysisCard";
+import AnalysisResultsCard from "@/components/AnalysisResults";
 import { MapLegend } from "@/components/MapLegend";
 
 // Fix for default marker icons in react-leaflet
@@ -383,6 +381,7 @@ function MapResizeHandler({
   return null;
 }
 
+// Continuation from Part 1...
 export default function Dashboard() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -391,7 +390,6 @@ export default function Dashboard() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [satelliteImages, setSatelliteImages] = useState<SatelliteImage[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
-  const [analyses, setAnalyses] = useState<EnhancedAnalysis[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<string>("all");
   const [selectedImage, setSelectedImage] = useState<string>("all");
@@ -453,29 +451,17 @@ export default function Dashboard() {
   const loadData = useCallback(async () => {
     setIsDataLoading(true);
     try {
-      const [
-        pipelinesRes,
-        imagesRes,
-        anomaliesRes,
-        analysesRes,
-        notificationsRes,
-      ] = await Promise.all([
-        pipelineApi.getAll(),
-        satelliteImageApi.getAll(),
-        anomalyApi.getAll({ is_resolved: false }),
-        analysisApi.getAll(),
-        notificationApi.getAll({ is_read: false }),
-      ]);
+      const [pipelinesRes, imagesRes, anomaliesRes, notificationsRes] =
+        await Promise.all([
+          pipelineApi.getAll(),
+          satelliteImageApi.getAll(),
+          anomalyApi.getAll({ is_resolved: false }),
+          notificationApi.getAll({ is_read: false }),
+        ]);
 
       setPipelines(pipelinesRes.data.results || pipelinesRes.data);
       setSatelliteImages(imagesRes.data.results || imagesRes.data);
       setAnomalies(anomaliesRes.data.results || anomaliesRes.data);
-
-      const completedAnalyses = (
-        analysesRes.data.results || analysesRes.data
-      ).filter((a: EnhancedAnalysis) => a.status === "completed");
-      setAnalyses(completedAnalyses);
-
       setNotifications(notificationsRes.data.results || notificationsRes.data);
 
       if (selectedPipeline !== "all") {
@@ -525,25 +511,6 @@ export default function Dashboard() {
       day: "numeric",
     });
   };
-
-  const analysesByImage = useMemo(
-    () =>
-      analyses.reduce(
-        (
-          acc: Record<string, EnhancedAnalysis[]>,
-          analysis: EnhancedAnalysis
-        ) => {
-          const imageId = analysis.satellite_image;
-          if (!acc[imageId]) {
-            acc[imageId] = [];
-          }
-          acc[imageId].push(analysis);
-          return acc;
-        },
-        {}
-      ),
-    [analyses]
-  );
 
   const getSeverityBadgeColor = (severity: string | null) => {
     switch (severity) {
@@ -607,49 +574,71 @@ export default function Dashboard() {
   const totalAnomaliesCount = anomalies.length;
   const resolvedCount = anomalies.filter((a) => a.is_resolved).length;
 
-  // Collect all unique legends from analyses
+  // Collect all unique legends from analysis results and mapped objects
   const allLegends = useMemo(() => {
-    const legendsMap = new Map<string, LegendData>();
+    const legendsMap = new Map<string, any>();
 
-    if (displayedImage) {
-      const imageAnalyses = analysesByImage[displayedImage.id] || [];
-      imageAnalyses.forEach((analysis) => {
-        if (analysis.analysis_summary?.legends) {
-          analysis.analysis_summary.legends.forEach((legend) => {
-            const key = `${legend.name}-${legend.color}`;
-            if (!legendsMap.has(key)) {
-              legendsMap.set(key, legend);
-            }
-          });
-        }
-      });
+    if (displayedImage?.grouped_analysis_results) {
+      const results = displayedImage.grouped_analysis_results;
 
-      // Also add legends from mapped objects
-      if (displayedImage.mapped_objects_data) {
-        displayedImage.mapped_objects_data.forEach((obj) => {
-          if (obj.legend_category_data) {
-            const legend: LegendData = {
-              name: obj.legend_category_data.name,
-              color: obj.legend_category_data.color,
-              icon: obj.legend_category_data.icon,
-              type: obj.legend_category_data.category_type,
-            };
-            const key = `${legend.name}-${legend.color}`;
-            if (!legendsMap.has(key)) {
-              legendsMap.set(key, legend);
-            }
+      // Add legends from oil spill detection
+      if (results.oil_spill_detection?.legends) {
+        results.oil_spill_detection.legends.forEach((legend) => {
+          const key = `${legend.name}-${legend.color}`;
+          if (!legendsMap.has(key)) {
+            legendsMap.set(key, legend);
+          }
+        });
+      }
+
+      // Add legends from pipeline encroachment
+      if (results.pipeline_encroachment?.legends) {
+        results.pipeline_encroachment.legends.forEach((legend) => {
+          const key = `${legend.name}-${legend.color}`;
+          if (!legendsMap.has(key)) {
+            legendsMap.set(key, legend);
+          }
+        });
+      }
+
+      // Add legends from object detection
+      if (results.object_detection?.legends) {
+        results.object_detection.legends.forEach((legend) => {
+          const key = `${legend.name}-${legend.color}`;
+          if (!legendsMap.has(key)) {
+            legendsMap.set(key, legend);
           }
         });
       }
     }
 
+    // Also add legends from mapped objects
+    if (displayedImage?.mapped_objects_data) {
+      displayedImage.mapped_objects_data.forEach((obj) => {
+        if (obj.legend_category_data) {
+          const legend = {
+            name: obj.legend_category_data.name,
+            color: obj.legend_category_data.color,
+            icon: obj.legend_category_data.icon,
+          };
+          const key = `${legend.name}-${legend.color}`;
+          if (!legendsMap.has(key)) {
+            legendsMap.set(key, legend);
+          }
+        }
+      });
+    }
+
     return Array.from(legendsMap.values());
-  }, [displayedImage, analysesByImage]);
+  }, [displayedImage]);
+
+  // Get analysis results for the displayed image
+  const analysisResults = displayedImage?.grouped_analysis_results;
 
   return (
     <TooltipProvider>
       <div className="h-screen flex flex-col bg-linear-to-br from-background via-background to-muted/20">
-        {/* Modern Header */}
+        {/* Header - Same as before */}
         <header className="bg-card/95 backdrop-blur-sm border-b border-border px-6 py-4 shadow-lg z-50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -774,7 +763,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Enhanced Stats Cards */}
+        {/* Stats Cards - Same as before */}
         {isStatsVisible && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-6 bg-linear-to-r from-muted/30 to-muted/10">
             {isDataLoading ? (
@@ -862,6 +851,7 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Main Content Area - To be continued in Part 3 */}
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Enhanced Sidebar */}
@@ -1019,7 +1009,7 @@ export default function Dashboard() {
                     </CardContent>
                   </Card>
 
-                  {/* Analysis Results Card */}
+                  {/* Analysis Results Cards */}
                   <Card className="shadow-lg border-2 hover:border-primary/50 transition-colors">
                     <CardHeader className="pb-4 bg-linear-to-r from-cyan-500/5 to-transparent rounded-t-lg">
                       <CardTitle className="text-base flex items-center gap-2 font-bold">
@@ -1030,7 +1020,7 @@ export default function Dashboard() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="max-h-[450px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                      <div className="max-h-[600px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
                         {selectedImage === "all" ? (
                           <div className="text-center py-12">
                             <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
@@ -1041,34 +1031,62 @@ export default function Dashboard() {
                             </p>
                           </div>
                         ) : displayedImage ? (
-                          (() => {
-                            const imageAnalyses =
-                              analysesByImage[selectedImage] || [];
-                            return imageAnalyses.length > 0 ? (
-                              <div className="space-y-3">
-                                {imageAnalyses.map(
-                                  (analysis: EnhancedAnalysis) => (
-                                    <AnalysisCard
-                                      key={analysis.id}
-                                      analysis={analysis}
-                                    />
-                                  )
+                          analysisResults ? (
+                            <>
+                              {/* Oil Spill Detection Result */}
+                              {analysisResults.oil_spill_detection && (
+                                <AnalysisResultsCard
+                                  type="oil_spill"
+                                  data={analysisResults.oil_spill_detection}
+                                />
+                              )}
+
+                              {/* Pipeline Encroachment Result */}
+                              {analysisResults.pipeline_encroachment && (
+                                <AnalysisResultsCard
+                                  type="pipeline_encroachment"
+                                  data={analysisResults.pipeline_encroachment}
+                                />
+                              )}
+
+                              {/* Object Detection Result */}
+                              {analysisResults.object_detection && (
+                                <AnalysisResultsCard
+                                  type="object_detection"
+                                  data={analysisResults.object_detection}
+                                />
+                              )}
+
+                              {/* No Results Message */}
+                              {!analysisResults.oil_spill_detection &&
+                                !analysisResults.pipeline_encroachment &&
+                                !analysisResults.object_detection && (
+                                  <div className="text-center py-12">
+                                    <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                                      <AlertCircle className="h-8 w-8 text-muted-foreground" />
+                                    </div>
+                                    <p className="text-sm text-muted-foreground font-medium mb-2">
+                                      No analysis results available
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Run analysis to view detailed results
+                                    </p>
+                                  </div>
                                 )}
+                            </>
+                          ) : (
+                            <div className="text-center py-12">
+                              <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                                <AlertCircle className="h-8 w-8 text-muted-foreground" />
                               </div>
-                            ) : (
-                              <div className="text-center py-12">
-                                <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                                  <AlertCircle className="h-8 w-8 text-muted-foreground" />
-                                </div>
-                                <p className="text-sm text-muted-foreground font-medium mb-2">
-                                  No analysis results available
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  Run analysis to view detailed results
-                                </p>
-                              </div>
-                            );
-                          })()
+                              <p className="text-sm text-muted-foreground font-medium mb-2">
+                                No analysis results available
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Run analysis to view detailed results
+                              </p>
+                            </div>
+                          )
                         ) : (
                           <div className="text-center py-12">
                             <div className="mx-auto w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
@@ -1211,7 +1229,7 @@ export default function Dashboard() {
             </aside>
           )}
 
-          {/* Map Container */}
+          {/* Map Container - Continue in Part 4 */}
           <main className="flex-1 relative overflow-hidden bg-muted/20">
             {/* Image Loading Indicator */}
             {isImageLoading && (
@@ -1273,30 +1291,6 @@ export default function Dashboard() {
 
             {/* Map Controls Overlay */}
             <div className="absolute top-6 right-6 z-1000 flex flex-col gap-2">
-              {/* <Card className="shadow-lg bg-card/95 backdrop-blur-sm">
-                <CardContent className="p-2">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={showAnomalies ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => setShowAnomalies(!showAnomalies)}
-                        className="w-full justify-start gap-2"
-                      >
-                        {showAnomalies ? (
-                          <Eye className="h-4 w-4" />
-                        ) : (
-                          <EyeOff className="h-4 w-4" />
-                        )}
-                        <span className="text-xs">
-                          {showAnomalies ? "Hide" : "Show"} Anomalies
-                        </span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Toggle anomaly markers</TooltipContent>
-                  </Tooltip>
-                </CardContent>
-              </Card> */}
               {displayedImage && (
                 <Card className="shadow-lg bg-card/95 backdrop-blur-sm">
                   <CardContent className="p-3">
