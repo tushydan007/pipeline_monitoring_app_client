@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Droplet,
   Construction,
@@ -9,7 +11,11 @@ import {
   AlertTriangle,
   CheckCircle,
   TrendingUp,
+  Copy,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { toast } from "react-toastify";
 import type {
   OilSpillDetectionResult,
   PipelineEncroachmentResult,
@@ -26,7 +32,57 @@ interface AnalysisResultsCardProps {
     | null;
 }
 
+// Coordinate Display Component with copy functionality
+const CoordinateDisplay = ({ lat, lon }: { lat: number; lon: number }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const fullCoordinate = `${lat.toFixed(8)}, ${lon.toFixed(8)}`;
+  const shortCoordinate = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(fullCoordinate);
+      toast.success("Coordinates copied to clipboard!", { autoClose: 2000 });
+    } catch (err) {
+      console.log(err);
+      toast.error("Failed to copy coordinates");
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      <span className="font-mono text-xs">
+        {isExpanded ? fullCoordinate : shortCoordinate}
+      </span>
+      <div className="flex gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 w-5 p-0"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          {isExpanded ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 w-5 p-0"
+          onClick={copyToClipboard}
+        >
+          <Copy className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 const AnalysisResultsCard = ({ type, data }: AnalysisResultsCardProps) => {
+  const [showAllLocations, setShowAllLocations] = useState(false);
+
   if (!data || !data.detected) {
     return null;
   }
@@ -85,6 +141,10 @@ const AnalysisResultsCard = ({ type, data }: AnalysisResultsCardProps) => {
   // Oil Spill Detection Card
   if (type === "oil_spill") {
     const oilSpillData = data as OilSpillDetectionResult;
+    const displayedLocations = showAllLocations
+      ? oilSpillData.locations
+      : oilSpillData.locations?.slice(0, 5) || [];
+
     return (
       <Card className="shadow-lg border-2 hover:border-red-500/50 transition-colors bg-linear-to-br from-red-50/50 to-card dark:from-red-950/20">
         <CardHeader className="pb-3 bg-linear-to-r from-red-500/10 to-transparent rounded-t-lg">
@@ -157,33 +217,46 @@ const AnalysisResultsCard = ({ type, data }: AnalysisResultsCardProps) => {
 
           {oilSpillData.locations && oilSpillData.locations.length > 0 && (
             <div className="mt-3 pt-3 border-t">
-              <p className="text-xs font-semibold text-muted-foreground mb-2">
-                Locations ({oilSpillData.locations.length}):
-              </p>
-              <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                {oilSpillData.locations.slice(0, 5).map((loc, idx) => (
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  Locations ({oilSpillData.locations.length}):
+                </p>
+                {oilSpillData.locations.length > 5 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => setShowAllLocations(!showAllLocations)}
+                  >
+                    {showAllLocations ? "Show Less" : "Show All"}
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                {displayedLocations.map((loc, idx) => (
                   <div
                     key={idx}
                     className="flex items-start gap-2 p-2 bg-muted/50 rounded-md text-xs"
                   >
                     <MapPin className="h-3 w-3 mt-0.5 shrink-0 text-red-500" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">
-                        {loc.lat.toFixed(6)}, {loc.lon.toFixed(6)}
-                      </p>
+                      <CoordinateDisplay lat={loc.lat} lon={loc.lon} />
                       {loc.area_m2 && (
-                        <p className="text-muted-foreground">
+                        <p className="text-muted-foreground mt-1">
                           Area: {loc.area_m2.toFixed(2)} m²
                         </p>
+                      )}
+                      {loc.severity && (
+                        <Badge
+                          variant={getSeverityColor(loc.severity)}
+                          className="text-xs mt-1"
+                        >
+                          {loc.severity}
+                        </Badge>
                       )}
                     </div>
                   </div>
                 ))}
-                {oilSpillData.locations.length > 5 && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    +{oilSpillData.locations.length - 5} more locations
-                  </p>
-                )}
               </div>
             </div>
           )}
@@ -197,6 +270,10 @@ const AnalysisResultsCard = ({ type, data }: AnalysisResultsCardProps) => {
   // Pipeline Encroachment Card
   if (type === "pipeline_encroachment") {
     const encroachmentData = data as PipelineEncroachmentResult;
+    const displayedLocations = showAllLocations
+      ? encroachmentData.locations
+      : encroachmentData.locations?.slice(0, 5) || [];
+
     return (
       <Card className="shadow-lg border-2 hover:border-orange-500/50 transition-colors bg-linear-to-br from-orange-50/50 to-card dark:from-orange-950/20">
         <CardHeader className="pb-3 bg-linear-to-r from-orange-500/10 to-transparent rounded-t-lg">
@@ -262,33 +339,46 @@ const AnalysisResultsCard = ({ type, data }: AnalysisResultsCardProps) => {
           {encroachmentData.locations &&
             encroachmentData.locations.length > 0 && (
               <div className="mt-3 pt-3 border-t">
-                <p className="text-xs font-semibold text-muted-foreground mb-2">
-                  Locations ({encroachmentData.locations.length}):
-                </p>
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                  {encroachmentData.locations.slice(0, 5).map((loc, idx) => (
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    Locations ({encroachmentData.locations.length}):
+                  </p>
+                  {encroachmentData.locations.length > 5 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={() => setShowAllLocations(!showAllLocations)}
+                    >
+                      {showAllLocations ? "Show Less" : "Show All"}
+                    </Button>
+                  )}
+                </div>
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                  {displayedLocations.map((loc, idx) => (
                     <div
                       key={idx}
                       className="flex items-start gap-2 p-2 bg-muted/50 rounded-md text-xs"
                     >
                       <MapPin className="h-3 w-3 mt-0.5 shrink-0 text-orange-500" />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">
-                          {loc.lat.toFixed(6)}, {loc.lon.toFixed(6)}
-                        </p>
+                        <CoordinateDisplay lat={loc.lat} lon={loc.lon} />
                         {loc.type && (
-                          <p className="text-muted-foreground">
+                          <p className="text-muted-foreground mt-1">
                             Type: {loc.type}
                           </p>
+                        )}
+                        {loc.severity && (
+                          <Badge
+                            variant={getSeverityColor(loc.severity)}
+                            className="text-xs mt-1"
+                          >
+                            {loc.severity}
+                          </Badge>
                         )}
                       </div>
                     </div>
                   ))}
-                  {encroachmentData.locations.length > 5 && (
-                    <p className="text-xs text-muted-foreground text-center">
-                      +{encroachmentData.locations.length - 5} more locations
-                    </p>
-                  )}
                 </div>
               </div>
             )}
@@ -299,9 +389,13 @@ const AnalysisResultsCard = ({ type, data }: AnalysisResultsCardProps) => {
     );
   }
 
-  // Object Detection Card
+  // Object Detection Card - IMPROVED
   if (type === "object_detection") {
     const objectData = data as ObjectDetectionResult;
+    const displayedLocations = showAllLocations
+      ? objectData.locations
+      : objectData.locations?.slice(0, 5) || [];
+
     return (
       <Card className="shadow-lg border-2 hover:border-blue-500/50 transition-colors bg-linear-to-br from-blue-50/50 to-card dark:from-blue-950/20">
         <CardHeader className="pb-3 bg-linear-to-r from-blue-500/10 to-transparent rounded-t-lg">
@@ -388,23 +482,38 @@ const AnalysisResultsCard = ({ type, data }: AnalysisResultsCardProps) => {
 
           {objectData.locations && objectData.locations.length > 0 && (
             <div className="mt-3 pt-3 border-t">
-              <p className="text-xs font-semibold text-muted-foreground mb-2">
-                Sample Locations ({Math.min(objectData.locations.length, 3)}):
-              </p>
-              <div className="space-y-2">
-                {objectData.locations.slice(0, 3).map((loc, idx) => (
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  Object Locations ({objectData.locations.length}):
+                </p>
+                {objectData.locations.length > 5 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => setShowAllLocations(!showAllLocations)}
+                  >
+                    {showAllLocations ? "Show Less" : "Show All"}
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                {displayedLocations.map((loc, idx) => (
                   <div
                     key={idx}
                     className="flex items-start gap-2 p-2 bg-muted/50 rounded-md text-xs"
                   >
                     <MapPin className="h-3 w-3 mt-0.5 shrink-0 text-blue-500" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">
+                      <p className="font-medium truncate mb-1">
                         {loc.name || `Object ${idx + 1}`}
                       </p>
-                      <p className="text-muted-foreground truncate">
-                        {loc.lat.toFixed(6)}, {loc.lon.toFixed(6)}
-                      </p>
+                      <CoordinateDisplay lat={loc.lat} lon={loc.lon} />
+                      {loc.type && (
+                        <p className="text-muted-foreground mt-1">
+                          Type: {loc.type}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}
